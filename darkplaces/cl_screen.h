@@ -21,7 +21,7 @@ void CL_Screen_Shutdown(void);
 void CL_BeginUpdateScreen();
 void CL_EndUpdateScreen();
 
-void SCR_DrawScreen ();
+void SCR_DrawScreen (int x, int y); /* WEBXR-PORT: explicit prototype — wasm needs exact call signatures */
 
 qboolean R_Stereo_Active(void);
 qboolean R_Stereo_ColorMasking(void);

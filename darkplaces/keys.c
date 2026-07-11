@@ -809,7 +809,7 @@ Key_Console (int key, int unicode)
 		if (cls.state == ca_disconnected)
 		{
 			CL_BeginUpdateScreen();
-			SCR_DrawScreen();
+			SCR_DrawScreen(0, 0); /* WEBXR-PORT: was (); wasm signature mismatch */
 			CL_EndUpdateScreen();
 		}
 		return;

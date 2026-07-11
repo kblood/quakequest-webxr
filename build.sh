@@ -156,6 +156,8 @@ LDFLAGS="-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES2 \
   -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
   -sEXPORTED_RUNTIME_METHODS=callMain,FS \
   -sASSERTIONS=1 \
+  -sGROWABLE_ARRAYBUFFERS=0 \
+  --profiling-funcs \
   -sUSE_OGG=1 -sUSE_VORBIS=1 $AUDIO_LDFLAGS \
   --preload-file ../data/id1@/quake/id1"
 
