@@ -124,11 +124,23 @@ qboolean SndSys_Init (const snd_format_t* requested, snd_format_t* suggested)
 				"\tSamples   : %i\n",
 				wantspec.channels, wantspec.format, wantspec.freq, wantspec.samples);
 
+#ifdef __EMSCRIPTEN__
+	/* WEBXR-PORT: the browser/WebAudio device is float32-native; pass NULL as
+	 * the obtained spec so SDL converts to our requested S16 format instead
+	 * of handing us AUDIO_F32 (which the mismatch check below would reject). */
+	if( SDL_OpenAudio( &wantspec, NULL ) )
+	{
+		Con_Printf( "Failed to open the audio device! (%s)\n", SDL_GetError() );
+		return false;
+	}
+	obtainspec = wantspec;
+#else
 	if( SDL_OpenAudio( &wantspec, &obtainspec ) )
 	{
 		Con_Printf( "Failed to open the audio device! (%s)\n", SDL_GetError() );
 		return false;
 	}
+#endif
 
 	Con_Printf("Obtained audio specification:\n"
 				"\tChannels  : %i\n"
