@@ -29,11 +29,8 @@ if ! command -v emcc >/dev/null 2>&1; then
   EMSDK_QUIET=1 source /c/Devstuff/emsdk/emsdk_env.sh
 fi
 
-# vbo-modernization worktree: output to ./webdist, NOT the shared ../web
-# (another agent serves/edits ../web on master concurrently). Serve with
-# `node webdist/serve.mjs 8091`.
 OBJ=build/obj
-WEBOUT=webdist
+WEBOUT=../web
 [ "$CLEAN" = 1 ] && rm -rf build
 mkdir -p "$OBJ" "$WEBOUT"
 
