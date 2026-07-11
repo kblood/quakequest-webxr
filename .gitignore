@@ -2,3 +2,4 @@ build/
 webdist/quake.js
 webdist/quake.wasm
 webdist/quake.data
+webdist-es2/

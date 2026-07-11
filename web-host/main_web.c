@@ -282,11 +282,16 @@ int main(int argc, char **argv)
 	if (chdir("/quake") != 0)
 		printf("[web-host] WARNING: chdir /quake failed — game data missing?\n");
 
-	/* ---- engine args (mirrors sys_linux.c main) ---- */
-	static const char *args[] = { "quake" };
+	/* ---- engine args (mirrors sys_linux.c main) ----
+	 * WEBXR-PORT: pass through any argv from Module.callMain([...]) so the
+	 * page (or a headless test harness) can hand the engine command-line
+	 * options like "-benchmark demo1" or "+timedemo demo1". argv[0] is
+	 * always replaced with "quake". */
+	static const char *args[64] = { "quake" };
 	com_argc = 1;
+	for (int ai = 1; ai < argc && com_argc < (int)(sizeof(args)/sizeof(args[0])); ai++)
+		args[com_argc++] = argv[ai];
 	com_argv = args;
-	(void)argc; (void)argv;
 
 	/* ---- engine init (Host_Main = Host_Init, no loop) ---- */
 	Host_Main();
