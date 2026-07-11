@@ -1916,7 +1916,19 @@ void VID_Restart_f(void)
 	Con_Printf("VID_Restart: changing from %s %dx%dx%dbpp%s%s, to %s %dx%dx%dbpp%s%s.\n",
 		vid.mode.fullscreen ? "fullscreen" : "window", vid.mode.width, vid.mode.height, vid.mode.bitsperpixel, vid.mode.fullscreen && vid.mode.userefreshrate ? va(vabuf, sizeof(vabuf), "x%.2fhz", vid.mode.refreshrate) : "", vid.mode.samples > 1 ? va(vabuf2, sizeof(vabuf2), " (%ix AA)", vid.mode.samples) : "",
 		vid_fullscreen.integer ? "fullscreen" : "window", vid_width.integer, vid_height.integer, vid_bitsperpixel.integer, vid_fullscreen.integer && vid_userefreshrate.integer ? va(vabuf, sizeof(vabuf), "x%.2fhz", vid_refreshrate.value) : "", vid_samples.integer > 1 ? va(vabuf2, sizeof(vabuf2), " (%ix AA)", vid_samples.integer) : "");
+#ifdef __EMSCRIPTEN__
+	// WEBXR-PORT: keep the sound system alive across video restarts. Sound has
+	// no dependency on the video mode, and emscripten SDL2's
+	// SDL_CloseAudio/SDL_OpenAudio cycle leaves the old WebAudio
+	// ScriptProcessorNode firing into freed heap ("memory access out of
+	// bounds" in HandleAudioProcess every audio tick) plus a stale
+	// autoResumeAudioContext listener on a closed AudioContext. VID restarts
+	// happen on every WebXR session enter/exit (eye-buffer resolution), so
+	// this path is hot for us. Restart only the renderer modules.
+	R_Modules_Shutdown();
+#else
 	VID_CloseSystems();
+#endif
 	VID_Shutdown();
 	if (!VID_Mode(vid_fullscreen.integer, vid_width.integer, vid_height.integer, vid_bitsperpixel.integer, vid_refreshrate.value, vid_stereobuffer.integer, vid_samples.integer))
 	{
@@ -1924,7 +1936,11 @@ void VID_Restart_f(void)
 		if (!VID_Mode(vid.mode.fullscreen, vid.mode.width, vid.mode.height, vid.mode.bitsperpixel, vid.mode.refreshrate, vid.mode.stereobuffer, vid.mode.samples))
 			Sys_Error("Unable to restore to last working video mode");
 	}
+#ifdef __EMSCRIPTEN__
+	R_Modules_Start(); // WEBXR-PORT: see above — sound left running
+#else
 	VID_OpenSystems();
+#endif
 }
 
 const char *vidfallbacks[][2] =
