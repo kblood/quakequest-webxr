@@ -113,8 +113,8 @@ cvar_t gl_fbo = {CVAR_SAVE, "gl_fbo", "1", "make use of GL_ARB_framebuffer_objec
 /* WEBXR-PORT: WebGL has no client-side vertex/index array path at all (unlike
  * desktop GL, which lets R_Mesh_VertexPointer/R_Mesh_Draw fall back to a raw
  * pointer when no buffer object is bound). This cvar forces vid.forcevbo on
- * in R_Mesh_SetUseVBO() below, so every R_Mesh_Prepare*/R_Mesh_Draw call is
- * routed through the engine's existing streaming-VBO machinery
+ * in R_Mesh_SetUseVBO() below, so every R_Mesh_Prepare(vertices)/R_Mesh_Draw
+ * call is routed through the engine's existing streaming-VBO machinery
  * (R_BufferData_Store / R_Mesh_CreateMeshBuffer) instead of depending on
  * emscripten's -sFULL_ES2 client-array emulation shim. */
 cvar_t gl_webgl_forcevbo = {CVAR_SAVE, "gl_webgl_forcevbo", "1", "WEBXR-PORT: force all rendering through real VBOs (vid.forcevbo) so WebGL never sees a client-side vertex or index array; required unless building with -sFULL_ES2"};
@@ -414,6 +414,12 @@ static void R_Mesh_SetUseVBO(void)
 		gl_state.usevbo_dynamicindex = (vid.support.arb_vertex_buffer_object && gl_vbo_dynamicindex.integer) || vid.forcevbo;
 		break;
 	}
+#if defined(__EMSCRIPTEN__) && defined(WEBXR_PORT_VBO_DEBUG)
+	Con_Printf("WEBXR-PORT DEBUG: R_Mesh_SetUseVBO: forcevbo=%i arb_vbo=%i static_vertex=%i static_index=%i dynamic_vertex=%i dynamic_index=%i\n",
+		vid.forcevbo, vid.support.arb_vertex_buffer_object,
+		gl_state.usevbo_staticvertex, gl_state.usevbo_staticindex,
+		gl_state.usevbo_dynamicvertex, gl_state.usevbo_dynamicindex);
+#endif
 }
 
 static void gl_backend_start(void)
@@ -3550,6 +3556,17 @@ void R_Mesh_VertexPointer(int components, int gltype, size_t stride, const void 
 		if (gl_state.pointer_vertex_components != components || gl_state.pointer_vertex_gltype != gltype || gl_state.pointer_vertex_stride != stride || gl_state.pointer_vertex_pointer != pointer || gl_state.pointer_vertex_vertexbuffer != vertexbuffer || gl_state.pointer_vertex_offset != bufferoffset)
 		{
 			int bufferobject = vertexbuffer ? vertexbuffer->bufferobject : 0;
+#if defined(__EMSCRIPTEN__) && defined(WEBXR_PORT_VBO_DEBUG)
+			if (pointer && !bufferobject)
+			{
+				static int warncount = 0;
+				if (warncount < 20)
+				{
+					warncount++;
+					Con_Printf("WEBXR-PORT DEBUG: R_Mesh_VertexPointer client-array fallback #%i (vertexbuffer=%p pointer=%p components=%i stride=%i)\n", warncount, (void*)vertexbuffer, pointer, components, (int)stride);
+				}
+			}
+#endif
 			gl_state.pointer_vertex_components = components;
 			gl_state.pointer_vertex_gltype = gltype;
 			gl_state.pointer_vertex_stride = stride;
@@ -3633,6 +3650,17 @@ void R_Mesh_ColorPointer(int components, int gltype, size_t stride, const void *
 			}
 			if (gl_state.pointer_color_components != components || gl_state.pointer_color_gltype != gltype || gl_state.pointer_color_stride != stride || gl_state.pointer_color_pointer != pointer || gl_state.pointer_color_vertexbuffer != vertexbuffer || gl_state.pointer_color_offset != bufferoffset)
 			{
+#if defined(__EMSCRIPTEN__) && defined(WEBXR_PORT_VBO_DEBUG)
+				if (pointer && !bufferobject)
+				{
+					static int warncount = 0;
+					if (warncount < 20)
+					{
+						warncount++;
+						Con_Printf("WEBXR-PORT DEBUG: R_Mesh_ColorPointer client-array fallback #%i (vertexbuffer=%p pointer=%p components=%i stride=%i)\n", warncount, (void*)vertexbuffer, pointer, components, (int)stride);
+					}
+				}
+#endif
 				gl_state.pointer_color_components = components;
 				gl_state.pointer_color_gltype = gltype;
 				gl_state.pointer_color_stride = stride;
@@ -3730,6 +3758,17 @@ void R_Mesh_TexCoordPointer(unsigned int unitnum, int components, int gltype, si
 			// texcoord array
 			if (unit->pointer_texcoord_components != components || unit->pointer_texcoord_gltype != gltype || unit->pointer_texcoord_stride != stride || unit->pointer_texcoord_pointer != pointer || unit->pointer_texcoord_vertexbuffer != vertexbuffer || unit->pointer_texcoord_offset != bufferoffset)
 			{
+#if defined(__EMSCRIPTEN__) && defined(WEBXR_PORT_VBO_DEBUG)
+				if (pointer && !bufferobject)
+				{
+					static int warncount = 0;
+					if (warncount < 20)
+					{
+						warncount++;
+						Con_Printf("WEBXR-PORT DEBUG: R_Mesh_TexCoordPointer client-array fallback #%i (unit=%u vertexbuffer=%p pointer=%p components=%i stride=%i)\n", warncount, unitnum, (void*)vertexbuffer, pointer, components, (int)stride);
+					}
+				}
+#endif
 				unit->pointer_texcoord_components = components;
 				unit->pointer_texcoord_gltype = gltype;
 				unit->pointer_texcoord_stride = stride;

@@ -156,6 +156,9 @@ fi
 
 CFLAGS="-O2 -std=gnu17 -include stdbool.h -Idarkplaces -w \
   -sUSE_OGG=1 -sUSE_VORBIS=1 $AUDIO_CFLAGS"
+if [ "$VBO_DEBUG" = 1 ]; then
+  CFLAGS="$CFLAGS -DWEBXR_PORT_VBO_DEBUG"
+fi
 
 # vbo-modernization: -sFULL_ES2 dropped. The engine's forcevbo mechanism
 # (gl_webgl_forcevbo, see src/darkplaces/gl_backend.c) now routes every draw
