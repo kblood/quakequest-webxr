@@ -109,6 +109,16 @@ cvar_t gl_vbo = {CVAR_SAVE, "gl_vbo", "3", "make use of GL_ARB_vertex_buffer_obj
 cvar_t gl_vbo_dynamicvertex = {CVAR_SAVE, "gl_vbo_dynamicvertex", "0", "make use of GL_ARB_vertex_buffer_object extension when rendering dynamic (animated/procedural) geometry such as text and particles"};
 cvar_t gl_vbo_dynamicindex = {CVAR_SAVE, "gl_vbo_dynamicindex", "0", "make use of GL_ARB_vertex_buffer_object extension when rendering dynamic (animated/procedural) geometry such as text and particles"};
 cvar_t gl_fbo = {CVAR_SAVE, "gl_fbo", "1", "make use of GL_ARB_framebuffer_object extension to enable shadowmaps and other features using pixel formats different from the framebuffer"};
+#ifdef __EMSCRIPTEN__
+/* WEBXR-PORT: WebGL has no client-side vertex/index array path at all (unlike
+ * desktop GL, which lets R_Mesh_VertexPointer/R_Mesh_Draw fall back to a raw
+ * pointer when no buffer object is bound). This cvar forces vid.forcevbo on
+ * in R_Mesh_SetUseVBO() below, so every R_Mesh_Prepare*/R_Mesh_Draw call is
+ * routed through the engine's existing streaming-VBO machinery
+ * (R_BufferData_Store / R_Mesh_CreateMeshBuffer) instead of depending on
+ * emscripten's -sFULL_ES2 client-array emulation shim. */
+cvar_t gl_webgl_forcevbo = {CVAR_SAVE, "gl_webgl_forcevbo", "1", "WEBXR-PORT: force all rendering through real VBOs (vid.forcevbo) so WebGL never sees a client-side vertex or index array; required unless building with -sFULL_ES2"};
+#endif
 
 cvar_t v_flipped = {0, "v_flipped", "0", "mirror the screen (poor man's left handed mode)"};
 qboolean v_flipped_state = false;
@@ -359,6 +369,17 @@ static void R_Mesh_DestroyVertexDeclarations(void);
 
 static void R_Mesh_SetUseVBO(void)
 {
+#ifdef __EMSCRIPTEN__
+	// WEBXR-PORT: see gl_webgl_forcevbo declaration above. This is the single
+	// choke point (called from gl_backend_start(), i.e. on every video start/
+	// restart) that computes gl_state.usevbo_* from vid.forcevbo, and every
+	// gl_vbo.integer-gated upload decision elsewhere in gl_backend.c/gl_rmain.c
+	// already ORs in vid.forcevbo too, so this one assignment is sufficient to
+	// make static AND dynamic vertex/index data alike always resolve to a real
+	// VBO before it reaches qglVertexAttribPointer/qglDrawElements.
+	if (gl_webgl_forcevbo.integer)
+		vid.forcevbo = true;
+#endif
 	switch(vid.renderpath)
 	{
 	case RENDERPATH_GL11:
@@ -606,6 +627,9 @@ void gl_backend_init(void)
 	Cvar_RegisterVariable(&gl_vbo);
 	Cvar_RegisterVariable(&gl_vbo_dynamicvertex);
 	Cvar_RegisterVariable(&gl_vbo_dynamicindex);
+#ifdef __EMSCRIPTEN__
+	Cvar_RegisterVariable(&gl_webgl_forcevbo); // WEBXR-PORT
+#endif
 	Cvar_RegisterVariable(&gl_paranoid);
 	Cvar_RegisterVariable(&gl_printcheckerror);
 

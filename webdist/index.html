@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QuakeQuest Web — vbo-modernization</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>Q</text></svg>">
+<style>
+  html, body { margin: 0; padding: 0; background: #111; color: #ddd;
+               font-family: system-ui, sans-serif; height: 100%; }
+  #wrap { display: flex; flex-direction: column; align-items: center; gap: 10px;
+          padding: 16px; }
+  canvas { background: #000; image-rendering: pixelated; outline: none;
+           max-width: 100%; }
+  #start { font-size: 1.4rem; padding: 12px 40px; cursor: pointer;
+           background: #7a2b16; color: #fff; border: 1px solid #a8452a;
+           border-radius: 6px; }
+  #start:disabled { background: #333; border-color: #444; color: #888; cursor: wait; }
+  #status { font-size: .9rem; color: #999; min-height: 1.2em; }
+  #hint { font-size: .8rem; color: #666; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h2>QuakeQuest Web — Milestone 1 (flatscreen)</h2>
+  <button id="start" disabled>Loading&hellip;</button>
+  <div id="status">fetching engine&hellip;</div>
+  <canvas id="canvas" width="1280" height="720" tabindex="0"
+          oncontextmenu="event.preventDefault()"></canvas>
+  <div id="hint">Click the canvas to capture the mouse &middot; WASD move &middot;
+    mouse look/fire &middot; Esc menu &middot; ` console</div>
+</div>
+<script>
+  const startBtn = document.getElementById('start');
+  const statusEl = document.getElementById('status');
+
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    // engine main() is invoked from the Start click (user activation for
+    // pointer lock + audio); build links with -sINVOKE_RUN=0
+    onRuntimeInitialized: () => {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Quake';
+      statusEl.textContent = 'ready — shareware pak0.pak preloaded';
+    },
+    setStatus: (t) => { if (t) statusEl.textContent = t; },
+    printErr: (t) => console.error(t),
+  };
+
+  startBtn.addEventListener('click', () => {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Running';
+    statusEl.textContent = 'engine starting…';
+    try {
+      Module.callMain([]);
+      statusEl.textContent = 'running';
+      Module.canvas.focus();
+    } catch (e) {
+      statusEl.textContent = 'engine failed to start — see console';
+      console.error(e);
+      throw e;
+    }
+  });
+</script>
+<script async src="quake.js"></script>
+</body>
+</html>
