@@ -11,7 +11,9 @@
 #endif
 
 #ifndef __cplusplus
+#ifndef bool // WEBXR-PORT: bool is already a macro when stdbool.h is force-included
 typedef qboolean bool;
+#endif
 #endif
 
 #define ALIGN_SIZE 16

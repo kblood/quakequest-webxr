@@ -40,6 +40,25 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define GL_DECAL                          0x2101
 #define GL_ADD                            0x0104
 #endif
+
+// WEBXR-PORT: prototypes for the GLES2 forwarders/no-op stubs defined in
+// vid_android.c. They were called without prototypes before; implicit
+// function declarations are hard errors under emscripten clang.
+void qglBindFramebuffer(GLenum target, GLuint framebuffer);
+void qglBindRenderbuffer(GLenum target, GLuint renderbuffer);
+void qglDeleteRenderbuffers(GLsizei n, const GLuint *renderbuffers);
+void qglDeleteFramebuffers(GLsizei n, const GLuint *framebuffers);
+void qglGenFramebuffers(GLsizei n, GLuint *framebuffers);
+GLenum qglCheckFramebufferStatus(GLenum target);
+void qglGenRenderbuffers(GLsizei n, GLuint *renderbuffers);
+void qglRenderbufferStorage(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+void qglBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
+void qglUniformBlockBinding(GLuint program, GLuint uniformBlockIndex, GLuint uniformBlockBinding);
+GLuint qglGetUniformBlockIndex(GLuint program, const GLchar *uniformBlockName);
+void glLoadMatrixf(const GLfloat *m);
+void glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+void glClientActiveTexture(GLenum target);
+void glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *ptr);
 #endif
 
 // disable data conversion warnings

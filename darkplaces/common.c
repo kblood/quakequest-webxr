@@ -1632,6 +1632,10 @@ char *va(char *buf, size_t buflen, const char *format, ...)
 	return buf;
 }
 
+// WEBXR-PORT: prototype added (function lives in snprintf.c); implicit
+// function declarations are hard errors under emscripten clang.
+int portable_vsnprintf(char *str, size_t str_m, const char *fmt, va_list ap);
+
 char *portable_va(char *buf, size_t buflen, const char *format, ...)
 {
 	va_list argptr;
