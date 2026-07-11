@@ -9067,6 +9067,21 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 	// check if any dynamic vertex processing must occur
 	dynamicvertex = false;
 
+	// WEBXR-PORT: rsurface.modelgeneratedvertex means RSurf_ActiveModelEntity
+	// computed fresh vertex/tangent/normal data into R_FrameData_Alloc scratch
+	// memory this frame (CPU vertex animation, e.g. classic .mdl models with
+	// no animcache) and deliberately left the *_vertexbuffer fields NULL,
+	// expecting the "static, just set pointers" fast path below to read it
+	// straight from the client pointer. That is legal client-side-array usage
+	// on desktop GL but is illegal under WebGL2 (no client-side arrays at
+	// all), even with forcevbo, because forcevbo only changes gl_vbo.integer-
+	// gated *decisions* elsewhere -- it can't retroactively upload data that
+	// nothing ever routed through R_BufferData_Store. Forcing the dynamic
+	// path here routes this data through the existing (correct) upload block
+	// further down instead.
+	if (vid.forcevbo && rsurface.modelgeneratedvertex)
+		dynamicvertex = true;
+
 	// a cvar to force the dynamic vertex path to be taken, for debugging
 	if (r_batch_debugdynamicvertexpath.integer)
 	{

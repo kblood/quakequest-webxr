@@ -39,9 +39,6 @@ void QC_KeyEvent(int state, int key, int character); /* vid_android.c -> Key_Eve
 void QC_MoveEvent(float yaw, float pitch, float roll); /* vid_android.c -> IN_Move */
 extern int andrw, andrh;                    /* vid_android.c — framebuffer size used by VID_InitMode */
 extern float gunangles[3];                  /* view.c — weapon aim angles; sent to server as cl.cmd.viewangles */
-extern cvar_t gl_vbo;                       /* gl_backend.c */
-extern cvar_t gl_vbo_dynamicvertex;         /* gl_backend.c */
-extern cvar_t gl_vbo_dynamicindex;          /* gl_backend.c */
 
 /* =====================================================================
  * VR host stubs — symbols the engine expects the (formerly OpenXR) host
@@ -333,27 +330,29 @@ int main(int argc, char **argv)
 
 	/* ---- engine args (mirrors sys_linux.c main) ----
 	 * -userdir /quake_user: writable IDBFS mount for config.cfg/saves
-	 * (mounted+preloaded by index.html preRun; M1 issue #4) */
-	static const char *args[] = { "quake", "-userdir", "/quake_user" };
+	 * (mounted+preloaded by index.html preRun; M1 issue #4).
+	 * WEBXR-PORT: any argv from Module.callMain([...]) is appended so the
+	 * page (or a headless test harness) can hand the engine command-line
+	 * options like "-benchmark demo1" or "+timedemo demo1". argv[0] is
+	 * always replaced with "quake". */
+	static const char *args[64] = { "quake", "-userdir", "/quake_user" };
 	com_argc = 3;
+	for (int ai = 1; ai < argc && com_argc < (int)(sizeof(args)/sizeof(args[0])); ai++)
+		args[com_argc++] = argv[ai];
 	com_argv = args;
-	(void)argc; (void)argv;
 
 	/* ---- engine init (Host_Main = Host_Init, no loop) ---- */
 	Host_Main();
 	printf("[web-host] engine initialised\n");
 
-	/* WebGL cannot mix client-side vertex arrays with a bound index VBO
-	 * (FULL_ES2's client-array emulation asserts on that combination, and
-	 * several engine batch paths produce it). M1 approach: disable VBOs
-	 * entirely so every draw is fully client-side, which FULL_ES2 emulates
-	 * correctly (same situation as upstream DP's wasm target / Qwasm).
-	 * TODO(M2 perf): re-enable VBOs by porting upstream's forcevbo-style
-	 * dynamic uploads. Set directly (not via Cbuf) so it applies before the
-	 * first draw — Cbuf_Frame may not run before the first QC_DrawFrame. */
-	Cvar_SetQuick(&gl_vbo, "0");
-	Cvar_SetQuick(&gl_vbo_dynamicvertex, "0");
-	Cvar_SetQuick(&gl_vbo_dynamicindex, "0");
+	/* WEBXR-PORT / M2: WebGL has no client-side vertex/index array path at
+	 * all, unlike desktop GL. M1 worked around this by disabling VBOs
+	 * entirely (gl_vbo 0) and letting -sFULL_ES2 emulate every draw call
+	 * with a scratch-buffer copy. M2 instead forces the engine's own
+	 * forcevbo mechanism on (gl_webgl_forcevbo 1, default-on, see
+	 * gl_backend.c R_Mesh_SetUseVBO) so every draw is genuinely VBO-sourced
+	 * — gl_vbo/gl_vbo_dynamicvertex/gl_vbo_dynamicindex are left at their
+	 * normal defaults and no longer need to be forced from here at all. */
 
 	/* Flatscreen configuration + keyboard/mouse binds, queued after
 	 * quake.rc/config.cfg so they win over saved VR settings. */

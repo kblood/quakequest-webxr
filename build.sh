@@ -1,8 +1,10 @@
 #!/bin/bash
-# build.sh — Emscripten build for the QuakeQuest->Web port (Milestone 1).
+# build.sh — Emscripten build for the QuakeQuest->Web port.
+# vbo-modernization branch: builds with real VBOs (no -sFULL_ES2), output
+# kept local to this worktree (webdist/) instead of the shared ../web.
 #
 # Usage:   ./build.sh [--audio=null|sdl] [--clean] [-j N]
-# Output:  ../web/quake.js, quake.wasm, quake.data
+# Output:  webdist/quake.js, quake.wasm, quake.data
 #
 # Compilation-unit list derived from QuakeQuest Projects/Android/jni/Android.mk,
 # minus the Android host (QuakeQuestSrc/*), sys_linux.c (replaced by
@@ -27,9 +29,13 @@ if ! command -v emcc >/dev/null 2>&1; then
   EMSDK_QUIET=1 source /c/Devstuff/emsdk/emsdk_env.sh
 fi
 
+# vbo-modernization worktree: output to ./webdist, NOT the shared ../web
+# (another agent serves/edits ../web on master concurrently). Serve with
+# `node webdist/serve.mjs 8091`.
 OBJ=build/obj
+WEBOUT=webdist
 [ "$CLEAN" = 1 ] && rm -rf build
-mkdir -p "$OBJ" ../web
+mkdir -p "$OBJ" "$WEBOUT"
 
 # --- engine sources (from Android.mk SRC_COMMON + SRC_QUEST + top-level) ---
 SRCS="
@@ -152,8 +158,16 @@ fi
 
 CFLAGS="-O2 -std=gnu17 -include stdbool.h -Idarkplaces -w \
   -sUSE_OGG=1 -sUSE_VORBIS=1 $AUDIO_CFLAGS"
+if [ "$VBO_DEBUG" = 1 ]; then
+  CFLAGS="$CFLAGS -DWEBXR_PORT_VBO_DEBUG"
+fi
 
-LDFLAGS="-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES2 \
+# vbo-modernization: -sFULL_ES2 dropped. The engine's forcevbo mechanism
+# (gl_webgl_forcevbo, see src/darkplaces/gl_backend.c) now routes every draw
+# through a real VBO, so FULL_ES2's client-array emulation shim (a
+# scratch-buffer copy per draw call) is no longer needed. See
+# reports/07-vbo-modernization.md.
+LDFLAGS="-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
   -sINITIAL_MEMORY=256MB -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=8MB \
   -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
   -sEXPORTED_RUNTIME_METHODS=callMain,FS \
@@ -189,5 +203,5 @@ fi
 
 # --- link ---
 echo "== linking =="
-emcc $OBJS -o ../web/quake.js $LDFLAGS
-echo "== done: web/quake.js + quake.wasm + quake.data =="
+emcc $OBJS -o "$WEBOUT/quake.js" $LDFLAGS
+echo "== done: $WEBOUT/quake.js + quake.wasm + quake.data =="
