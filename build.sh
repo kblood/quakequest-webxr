@@ -125,6 +125,7 @@ darkplaces/world.c
 darkplaces/zone.c
 web-host/sys_web.c
 web-host/main_web.c
+web-host/fbo_smoketest.c
 "
 
 # --- audio backend ---

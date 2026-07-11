@@ -231,8 +231,15 @@ static EM_BOOL on_pointerlockchange(int type, const EmscriptenPointerlockChangeE
  * Frame pump — the browser-side equivalent of AppThreadFunction()'s
  * while-loop (QuakeQuest_OpenXR.c:276-310), single eye, flatscreen.
  * ===================================================================== */
+bool WebFBOTest_RunIfRequested(void); /* fbo_smoketest.c — M2 risk-#1 probe */
+
 static void web_frame(void)
 {
+	/* M2 FBO smoke test: when armed, this frame renders into an external,
+	 * raw-bound FBO instead of the canvas (see fbo_smoketest.c) */
+	if (WebFBOTest_RunIfRequested())
+		return;
+
 	/* absolute mouse-look angles; vr_yawmode 0 applies them verbatim in IN_Move */
 	QC_MoveEvent(s_yaw, s_pitch, 0.0f);
 
