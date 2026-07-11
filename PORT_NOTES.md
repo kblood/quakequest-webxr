@@ -1,9 +1,77 @@
-# PORT_NOTES — M1 (flatscreen in browser)
+# PORT_NOTES — M1 (flatscreen) + M2 (WebXR stereo)
 
-State as of 2026-07-12: **M1 complete.** Engine links, boots shareware Quake,
-renders demo playback at 1280x720 in a browser tab, keyboard/mouse input works,
-SDL2/WebAudio sound initializes. Verified headless (zero console errors,
-screenshots in `web/screenshots/`).
+State as of 2026-07-12: **M1 + M2 complete (pending real-headset confirm).**
+Engine links, boots shareware Quake flatscreen at 1280x720; entering VR starts
+an immersive-vr session, pauses the flatscreen loop, and renders head-tracked
+per-eye stereo into the XRWebGLLayer framebuffer. Config/saves persist via
+IDBFS. Verified headless incl. a full emulated XR session (IWER): enter →
+stereo render → exit → re-enter, zero console/page errors.
+
+## M2 architecture (see reports/05-webxr-bridge-design.md — implemented as designed)
+
+- `web-host/lib/webxr/` — vendored emscripten-webxr @1bc0b7b with **11
+  patches**, all marked `WEBXR-PORT PATCH #n` and documented in
+  `web-host/lib/webxr/PATCHES.md` (the 3 design-doc bugs + 8 more found
+  during bring-up, incl. head-pose position/orientation never marshaled and
+  the feature enum being ordinals where the JS expects a bitmask).
+- `web-host/webxr_bridge.c` — session lifecycle + XR frame pump. Owns
+  `VR_GetVRProjection` / `VR_SetHMDOrientation` / `VR_SetHMDPosition`.
+  Notable mechanics:
+  - **Loop handoff:** `emscripten_pause_main_loop()` on session start, XR
+    rAF drives QC_BeginFrame/QC_DrawFrame(eye,x,y)/QC_EndFrame, resume on end.
+  - **Shared-layer stereo:** WebXR gives ONE framebuffer with per-eye
+    viewport sub-rects (vs OpenXR's two FBOs at 0,0). The per-eye offset
+    rides the existing `QC_DrawFrame(eye, x, y)` params →
+    `r_refdef.view.x/y`, which places both the 3D view and the 2D/HUD ortho
+    stage (gl_rmain.c:5685). Per-eye scissored clear at bridge level.
+  - **FBO seam:** library binds the layer framebuffer raw (registered in
+    GL.framebuffers, `.name=id`); engine's `R_Mesh_Start()` re-fetches
+    `GL_FRAMEBUFFER_BINDING` → `gl_state.defaultframebufferobject` each
+    QC_DrawFrame, so engine FBO passes return to the XR target. Validated by
+    `web-host/fbo_smoketest.c` (`?fbotest=1`, kept as regression probe).
+  - **Projection:** direct memcpy of `XRView.projectionMatrix`; the engine's
+    Quake-unit zNear/zFar are pushed via `updateRenderState({depthNear,
+    depthFar})` (far quantized to pow2, capped 64k, so per-frame farclip
+    fluctuation doesn't churn render state). `r_useinfinitefarclip`'s 1<<23
+    farclip is harmless — our memcpy overwrites the engine matrix either way.
+  - **Pose:** `QuatToYawPitchRoll` ported from TBXR_Common.c:911-938 (types
+    only; identical -z/-x/y remap — WebXR = OpenXR convention). Position
+    passed RAW (consumers in view.c remap per-field; do NOT remap in bridge).
+    `playerHeight` latched on the screen-layer→VR transition like the
+    Android host. Fixed-IPD `GetStereoSeparation()` untouched by design.
+  - **Resolution:** first XR frame → `QC_SetResolution(eyeW, eyeH)` (one
+    VID_Restart_f); session end → restore canvas size. vid.width/height =
+    ONE eye's viewport, not the double-wide layer.
+  - M2 aims with the head: `gunangles = hmdorientation` each XR frame
+    (controllers are M3).
+- `main_web.c` — `VR_UseScreenLayer()` returns false during a session;
+  `GetFOV()` derives from the XR projection matrix (culling only); engine
+  args now `-userdir /quake_user`; 10s persistence tick.
+- **Persistence (M1 issue #4):** `/quake_user` = IDBFS mount (index.html
+  preRun, initial `FS.syncfs(true)` gated behind a run dependency so saved
+  config is present before `main()`). Engine writes `config.cfg`/saves to
+  `/quake_user/id1/` via `-userdir`; `WebHost_PersistTick` saves config +
+  syncs every 10s, `_WebHost_PersistNow` flushes on visibilitychange.
+  Round-trip verified (config.cfg survives reload pre-tick).
+- **index.html** — dedicated "Enter VR" button (fresh user activation,
+  separate from Start), `window.onQuakeXRState` UI feedback,
+  `?autostart=1` / `?fbotest=1` dev params.
+
+## M2 verification notes
+
+- Headless XR needs a fake device: `iwer` npm package (Immersive Web
+  Emulation Runtime), `new XRDevice(metaQuest3).installRuntime({forceInstall:
+  true})` injected via evaluateOnNewDocument (forceInstall because headless
+  Chrome exposes a native navigator.xr that reports immersive-vr
+  unsupported). IWER's layer has `framebuffer: null` (= canvas backbuffer,
+  spec-legal) — readback must happen inside an XR rAF registered after the
+  library's.
+- Known cosmetic: `glCopyTexSubImage2D: Invalid copy texture format` warns
+  during VID_Restart loading-plaque capture (RGB canvas → RGBA texture;
+  alpha:false context attr). Pre-existing, warning-only.
+- The fork's `glsl/default.glsl` **water permutation fails to compile** on
+  strict WebGL2 ("No precision specified for (float)") — pre-existing fork
+  bug, engine falls back gracefully. Fix in M3/M4 if water looks wrong.
 
 ## Build & run
 
@@ -83,6 +151,12 @@ pak preloaded to MEMFS at `/quake/id1/pak0.pak`).
    so SDL converts to S16 internally (WebAudio device is float32-native;
    the obtained-spec mismatch check rejected AUDIO_F32 and audio never
    started).
+8. **vid_shared.c** (M2) — under `__EMSCRIPTEN__`, `VID_Restart_f` restarts
+   only the renderer modules, not sound. emscripten SDL2's
+   CloseAudio/OpenAudio cycle leaves the old WebAudio ScriptProcessorNode
+   firing into freed heap (OOB trap per audio tick) + a stale resume
+   listener on a closed AudioContext; VID restarts run on every XR session
+   enter/exit, so sound stays up across them.
 
 Nothing else in the engine is modified. `snd_opensl.c` (Android OpenSL) is
 simply not compiled; `snd_sdl.c` + the standard snd stack replace it.
@@ -127,22 +201,23 @@ upload per draw). Same operating point as upstream DP-wasm/Qwasm.
 buffer is supplied. That removes the per-draw copy tax and would let
 `-sFULL_ES2` be dropped entirely. Do this before Quest-browser perf testing.
 
-## Known issues / M2 handoff
+## Known issues / M3 handoff
 
 1. **Perf: client-side arrays** (above). Desktop headless Chrome is fine;
-   Quest 3 browser will feel it. Fix = forcevbo-style uploads.
+   Quest 3 browser will feel it. Fix = forcevbo-style uploads (in progress
+   on branch `vbo-modernization` by another agent — do not touch
+   R_Mesh_*Pointer paths or gl_vbo/FULL_ES2 flags on master).
 2. **Audio latency/underruns not profiled.** SDL_OpenAudio with NULL obtained
    spec adds an SDL-side S16→F32 conversion per callback. Fine on desktop;
    profile on Quest. Audible-output check was not possible headless — code
    path verified ("Sound format: 48000Hz…"), listen on first manual run.
 3. **`Host_Mingled: time stepped forward`** warning on first frame (realtime
-   starts at epoch-seconds jump). Harmless; silence by initializing
-   `host_dirtytime` before the first `QC_BeginFrame` if it bothers anyone.
-4. **Resize not wired**: canvas is fixed 1280x720 (`QC_SetResolution` /
-   `VID_Restart_f` exists and works, just not hooked to a resize event —
-   M2 will need it for entering/leaving XR anyway).
-5. **Config persistence**: no IDBFS yet; config.cfg writes go to MEMFS and
-   vanish on reload. M2/M4: mount IDBFS, `FS.syncfs` on cvar save.
+   starts at epoch-seconds jump). Harmless.
+4. **Flatscreen window resize still not wired** (canvas fixed 1280x720).
+   The VR enter/exit resolution handoff (M1 issue #3) IS wired; a browser
+   window-resize handler for flatscreen remains a nice-to-have (gate it on
+   `!WebXRBridge_IsSessionActive()` per design doc risk #6).
+5. ~~Config persistence~~ **RESOLVED in M2**: IDBFS at /quake_user (above).
 6. **Arrow-key turning vs mouse-yaw desync** (host-side accumulator is
    authoritative). Cosmetic for M1.
 7. **`Cmd_AddCommand: menu_reset already defined`** at boot — pre-existing
@@ -150,10 +225,19 @@ buffer is supplied. That removes the per-draw copy tax and would let
 8. **Networking compiled but inert** (lhnet/libcurl dlopen fails gracefully).
    Out of scope per plan.
 9. **JS-side globals**: the emscripten module is non-modularized; the page
-   uses `Module.callMain`. If M2 wants two builds on one page, switch to
-   `-sMODULARIZE`.
+   uses `Module.callMain`.
+10. **Menus in VR (M3)**: with `VR_UseScreenLayer()` false, the menu/console
+    render per-eye at the eye viewports (readable but head-locked). M3's
+    in-scene menu quad + d-pad nav replaces this. Menu toggle needs a
+    rebind (no Menu button in browser Gamepad API — reports/06).
+11. **Water GLSL permutation fails on strict WebGL2** (missing precision
+    qualifiers in the fork's default.glsl water path) — logged fallback,
+    fix when it visibly matters.
+12. **In-headset "Exit VR"**: the page button isn't reachable in-headset;
+    Quest's system UI ends the session (wired + tested). An in-game menu
+    item can call `WebXRBridge_RequestExit()` in M3.
 
-## M2 starting points
+## M2 starting points (historical — all implemented, see M2 architecture above)
 
 - Frame pump per eye already proven: call `QC_DrawFrame(eye, x, y)` twice
   with `r_stereo_side`-driven projection from `VR_GetVRProjection` returning
