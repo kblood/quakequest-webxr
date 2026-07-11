@@ -28,6 +28,8 @@
 #include "quakedef.h"
 #include "keys.h"
 
+#include "webxr_bridge.h"   /* M2: WebXR session/rendering bridge */
+
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void Host_Main(void);                       /* host.c  — Host_Init() only (loop already inverted) */
 void QC_BeginFrame(bool stopTime);          /* vid_android.c */
@@ -52,27 +54,26 @@ float hmdPosition[3]    = {0, 0, 0}; /* view.c: head position (unused flat) */
 float weaponOffset[3]   = {0, 0, 0}; /* view.c: 6DoF hand-vs-head offset (unused flat) */
 float playerHeight      = 0.0f;      /* view.c: standing-height reference */
 
-/* gl_backend.c calls this to let a VR host override the projection matrix.
- * Returning without touching 'projection' keeps the engine's own flatscreen
- * perspective matrix. (The Android host always overwrote it from OpenXR fov.) */
-bool VR_GetVRProjection(int eye, float zNear, float zFar, float *projection)
-{
-	(void)eye; (void)zNear; (void)zFar; (void)projection;
-	return false;
-}
+/* VR_GetVRProjection / VR_SetHMDOrientation / VR_SetHMDPosition are owned by
+ * webxr_bridge.c since M2 (single source of truth, design doc §6/risk #4):
+ * no-ops while flat, real XR data during a session. */
 
 /* true => "2D big screen" mode: zero stereo eye separation (gl_rmain.c:58)
- * and no per-eye crosshair/HUD offsets (sbar.c:141). Right for flatscreen. */
+ * and no per-eye crosshair/HUD offsets (sbar.c:141). Right for flatscreen;
+ * false during an immersive session (M2). */
 qboolean VR_UseScreenLayer(void)
 {
-	return true;
+	return !WebXRBridge_IsSessionActive();
 }
 
 /* cl_screen.c: vertical FOV in degrees (Android host returned the HMD fov_y;
- * the fork removed the scr_fov cvar). 90 = classic Quake default. */
+ * the fork removed the scr_fov cvar). 90 = classic Quake default; in VR the
+ * bridge derives it from the XR projection matrix (frustum culling only —
+ * the projection itself comes from VR_GetVRProjection). */
 float GetFOV(void)
 {
-	return 90.0f;
+	float xrFov = WebXRBridge_GetFOV();
+	return xrFov > 0.0f ? xrFov : 90.0f;
 }
 
 /* host.c/sv_main.c: server tick length. Android returned 1/refresh-rate.
@@ -233,8 +234,46 @@ static EM_BOOL on_pointerlockchange(int type, const EmscriptenPointerlockChangeE
  * ===================================================================== */
 bool WebFBOTest_RunIfRequested(void); /* fbo_smoketest.c — M2 risk-#1 probe */
 
+/* =====================================================================
+ * Config/save persistence (M1 issue #4): /quake_user is an IDBFS mount
+ * (set up in index.html preRun, populated with FS.syncfs(true) before
+ * main runs); the engine writes there via -userdir. Persist = write
+ * config.cfg + push the mount to IndexedDB.
+ * ===================================================================== */
+void Host_SaveConfig(void); /* host.c — writes key binds + archived cvars */
+
+EM_JS(void, web_js_idbfs_sync, (void), {
+	if (Module.__idbfsSyncing) return;      /* coalesce overlapping syncs */
+	Module.__idbfsSyncing = true;
+	FS.syncfs(false, function(err) {
+		Module.__idbfsSyncing = false;
+		if (err) console.warn('[persist] FS.syncfs failed:', err);
+	});
+});
+
+static double s_lastPersistMs = 0.0;
+
+/* Exported for the page's visibilitychange/pagehide handler. */
+EMSCRIPTEN_KEEPALIVE
+void WebHost_PersistNow(void)
+{
+	Host_SaveConfig();
+	web_js_idbfs_sync();
+	s_lastPersistMs = emscripten_get_now();
+}
+
+/* Called once per pumped frame (flatscreen loop AND XR loop). */
+void WebHost_PersistTick(void)
+{
+	double now = emscripten_get_now();
+	if (now - s_lastPersistMs > 10000.0)
+		WebHost_PersistNow();
+}
+
 static void web_frame(void)
 {
+	WebHost_PersistTick();
+
 	/* M2 FBO smoke test: when armed, this frame renders into an external,
 	 * raw-bound FBO instead of the canvas (see fbo_smoketest.c) */
 	if (WebFBOTest_RunIfRequested())
@@ -292,9 +331,11 @@ int main(int argc, char **argv)
 	if (chdir("/quake") != 0)
 		printf("[web-host] WARNING: chdir /quake failed — game data missing?\n");
 
-	/* ---- engine args (mirrors sys_linux.c main) ---- */
-	static const char *args[] = { "quake" };
-	com_argc = 1;
+	/* ---- engine args (mirrors sys_linux.c main) ----
+	 * -userdir /quake_user: writable IDBFS mount for config.cfg/saves
+	 * (mounted+preloaded by index.html preRun; M1 issue #4) */
+	static const char *args[] = { "quake", "-userdir", "/quake_user" };
+	com_argc = 3;
 	com_argv = args;
 	(void)argc; (void)argv;
 
@@ -342,6 +383,10 @@ int main(int argc, char **argv)
 	emscripten_set_mousemove_callback("#canvas", NULL, EM_TRUE, on_mousemove);
 	emscripten_set_wheel_callback("#canvas", NULL, EM_TRUE, on_wheel);
 	emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, NULL, EM_TRUE, on_pointerlockchange);
+
+	/* ---- WebXR bridge (M2): registers session callbacks; the "Enter VR"
+	 * button calls _WebXRBridge_RequestSession from its click handler ---- */
+	WebXRBridge_Init();
 
 	/* ---- browser drives the frame pump (rAF timing) ---- */
 	emscripten_set_main_loop(web_frame, 0, EM_FALSE);
