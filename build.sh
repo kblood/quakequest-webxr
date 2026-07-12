@@ -30,7 +30,8 @@ if ! command -v emcc >/dev/null 2>&1; then
 fi
 
 OBJ=build/obj
-WEBOUT=../web
+# Overridable so worktree agents can build to a private dir (WEBOUT=webdist ./build.sh)
+WEBOUT="${WEBOUT:-../web}"
 [ "$CLEAN" = 1 ] && rm -rf build
 mkdir -p "$OBJ" "$WEBOUT"
 
