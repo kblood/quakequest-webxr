@@ -57,4 +57,10 @@ void WebXRLoco_OnSessionStart(void);
  */
 void WebXRLoco_Update(void);
 
+/* Session teardown (called from WebXRInput_Reset on session end): releases
+ * keys this module may be holding down — K_SPACE (jump, right-hand A held
+ * across the exit) and K_SHIFT (off-hand run trigger) — and clears the
+ * private edge-detection state. */
+void WebXRLoco_SessionEnd(void);
+
 #endif

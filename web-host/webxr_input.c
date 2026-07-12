@@ -175,6 +175,7 @@ static void WebXRInput_OverlaySessionEnded(void); /* below (needs EM_JS) */
 void WebXRInput_Reset(void)
 {
     IN_Weapon_SessionEnd(); /* WEBXR-PORT M3-weapon: release held keys, restore 3DoF */
+    WebXRLoco_SessionEnd();  /* WEBXR-PORT M3-loco: release jump (A) / run (K_SHIFT) */
     WebXRInput_OverlaySessionEnded();
     memset(webxr_controllers, 0, sizeof(webxr_controllers));
     memset(&leftTrackedRemoteState_new,  0, sizeof(leftTrackedRemoteState_new));

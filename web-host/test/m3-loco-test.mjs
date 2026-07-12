@@ -256,6 +256,26 @@ console.log(`walk speed: no-run=${walkNoRun.toFixed(1)} run=${walkRun.toFixed(1)
 check('off-hand trigger (+speed/run) increases walk distance', walkRun > walkNoRun * 1.15,
   `no-run=${walkNoRun.toFixed(1)} run=${walkRun.toFixed(1)}`);
 
+// =====================================================================
+// 5) Jump: right-hand A -> K_SPACE (+jump), the fork's in-game else-branch
+// (QuakeQuest_OpenXR.c:863-866) — headset-QA bug-1 regression check.
+// Sample origin z while airborne: a jump lifts the player by tens of units.
+// =====================================================================
+await resetToSpawn('before jump phase');
+const zGround = parseLoco(await locoOverlay()).origin[2];
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('a-button', 1.0));
+let zPeak = zGround;
+for (let i = 0; i < 8; i++) {
+  await sleep(120);
+  const z = parseLoco(await locoOverlay()).origin[2];
+  if (z > zPeak) zPeak = z;
+}
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('a-button', 0.0));
+await sleep(600);
+console.log(`jump: ground z=${zGround.toFixed(1)} peak z=${zPeak.toFixed(1)}`);
+check('right A jumps in-game (origin z rose > 8 units)', zPeak > zGround + 8,
+  `ground=${zGround.toFixed(1)} peak=${zPeak.toFixed(1)}`);
+
 await page.screenshot({ path: SCREENSHOT });
 console.log('# screenshot: ' + SCREENSHOT);
 

@@ -136,6 +136,8 @@ menu/console/demo is up.
 |---|---|---|
 | Dominant (R) trigger | fire (`+attack`) | in_weapon |
 | Off-hand (L) trigger | run (`+speed`); fire when left-handed | in_locomotion |
+| Right A (in-game) | jump (K_SPACE, fork :863-866; headset-QA bug-1 fix — was unported) | in_locomotion |
+| Right B (in-game) | *nothing* — explicitly `//Unused` in the fork (:869-874) | — |
 | Dominant (R) thumbstick click | laser-sight cycle | in_weapon |
 | Off-hand (L) thumbstick click SHORT (<600 ms) | menu toggle (K_ESCAPE dn+up on release) | in_menu |
 | Off-hand (L) thumbstick click LONG (≥600 ms, in-game) | recenter + haptic confirm | in_menu → in_comfort |
@@ -145,6 +147,15 @@ menu/console/demo is up.
 | Off-hand grip + hands <0.5 m | two-handed stabilization | in_weapon |
 | Left X / Y (always physical left) | quicksave / quickload | in_comfort |
 | Both sticks + A/B while menu up | d-pad nav / select / back | in_menu |
+
+Deliberate deviations from the fork's HandleInput_Default, re-audited for the
+bug-1 fix (headset QA 2026-07-12): the fork's `canUseQuickSave` is never set
+true anywhere in its tree, so its X/Y quicksave/quickload path was DEAD CODE
+(X = god-mode debug, Y = VR text-input toggle in the shipped build); the port
+enables the quicksave path on purpose. The fork's thumbstick VR text-input
+keyboard (`textInput` mode, :650-744) is not ported — browser text entry can
+use the real keyboard, and Y is quickload here. With the jump fix above,
+every LIVE in-game binding of the fork now has a port-side owner.
 
 ### Integration fixes (found only in the merged build)
 

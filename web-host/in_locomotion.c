@@ -45,7 +45,7 @@
 #include <emscripten.h>
 
 #include "quakedef.h" /* vec2_t/vec3_t, matrix4x4_t, Matrix4x4_*, cl, cvar_t, YAW/PITCH/ROLL, Con_Printf, dpsnprintf, Cmd_AddCommand */
-#include "keys.h"     /* K_SHIFT, K_MOUSE1 */
+#include "keys.h"     /* K_SHIFT, K_MOUSE1, K_SPACE */
 
 #include "webxr_input.h"
 #include "webxr_bridge.h" /* WebXRBridge_QuatToYawPitchRoll — the same ported
@@ -66,6 +66,11 @@ extern cvar_t cl_walkdirection;
 
 extern float gunangles[3];       /* view.c — this frame's weapon-aim angles (chunk 2) */
 extern float hmdorientation[3];  /* main_web.c/webxr_bridge.c — [pitch,yaw,roll] degrees */
+
+qboolean VR_UseScreenLayer(void); /* main_web.c — the fork's 2D-UI predicate
+                                   * (bigScreen/demo/console); gates the jump
+                                   * binding to in-game frames like the fork's
+                                   * bigScreen == 0 else-branch did */
 
 /* vid_android.c (compiled unmodified — see file header) */
 void QC_Analog(int enable, float x, float y);
@@ -143,6 +148,11 @@ static void LocoHandleButtonEdge(const WebXRRemoteState *st, const WebXRRemoteSt
  * ===================================================================== */
 
 static double s_locoLastMs = -1.0;
+
+/* PRIVATE previous right-hand state for the jump-button edge (same pattern
+ * as in_weapon.c/in_menu.c: the shared rightTrackedRemoteState_old is not
+ * used for edges by this module to avoid racing the other chunks' copies) */
+static WebXRRemoteState s_locoPrevRight;
 
 static void WebXRLoco_DebugTick(void); /* below (needs EM_JS) */
 
@@ -237,6 +247,19 @@ void WebXRLoco_Update(void)
         /* bigScreen d-pad menu-navigation emulation (QuakeQuest_OpenXR.c:
          * 837-862) is chunk 3's (HUD & Menus) responsibility — not ported
          * here to avoid duplicate/conflicting Key_Event dispatch. */
+
+        /* WEBXR-PORT M3 gap fix (headset QA bug 1): Jump — right-hand A ->
+         * K_SPACE, the fork's in-game else-branch of the bigScreen split
+         * (QuakeQuest_OpenXR.c:863-866). Was never ported by any chunk:
+         * chunk 3 owns A only WHILE the menu is up (A = K_ENTER, fork
+         * :856-858) and no other chunk touched A in-game. Gated by the same
+         * 2D-UI predicate the fork used (bigScreen -> VR_UseScreenLayer,
+         * which also covers demo/console frames). The fork's in-game B
+         * binding is explicitly "//Unused" (:869-874) — nothing to port.
+         * K_SPACE is bound to +jump by main_web.c's init binds. */
+        if (!VR_UseScreenLayer())
+            LocoHandleButtonEdge(&rightTrackedRemoteState_new, &s_locoPrevRight,
+                                 xrButton_A, K_SPACE);
     }
 
     /* QuakeQuest_OpenXR.c:906-963 — "Left-hand specific stuff": movement
@@ -292,9 +315,24 @@ void WebXRLoco_Update(void)
     /* rightTrackedRemoteState_old is only read by chunk 2 (fire trigger,
      * literal right hand) and chunk 4 (weapon-switch flick) in the original
      * split — this file only READS rightTrackedRemoteState_new (turn stick,
-     * analog, no edge detection needed), so it does not own that copy. */
+     * analog, no edge detection needed), so it does not own that copy. The
+     * jump edge above uses this module's PRIVATE right-hand copy instead;
+     * updated unconditionally (even on 2D-UI frames) so no stale edge fires
+     * when the menu closes with A held. */
+    s_locoPrevRight = rightTrackedRemoteState_new;
 
     WebXRLoco_DebugTick();
+}
+
+/* Session teardown: release anything this module may be holding down so it
+ * can't leak into flatscreen (K_SPACE = jump edge above; K_SHIFT = the
+ * off-hand run trigger, held-across-exit case). Called from
+ * WebXRInput_Reset alongside IN_Weapon_SessionEnd. */
+void WebXRLoco_SessionEnd(void)
+{
+    QC_KeyEvent(0, K_SPACE, 0);
+    QC_KeyEvent(0, K_SHIFT, 0);
+    memset(&s_locoPrevRight, 0, sizeof(s_locoPrevRight));
 }
 
 /* =====================================================================
