@@ -24,6 +24,7 @@
 #include "quakedef.h" /* Con_Printf, Cmd_AddCommand, dpsnprintf */
 
 #include "webxr_input.h"
+#include "in_weapon.h" /* WEBXR-PORT M3-weapon: weapon aim/fire/haptics chunk */
 
 /* host globals (main_web.c / webxr_bridge.c) */
 extern float hmdorientation[3];
@@ -160,6 +161,8 @@ void WebXRInput_Update(double nowMs)
     BuildHandState(WEBXR_HAND_RIGHT, &webxr_controllers[WEBXR_HAND_RIGHT],
                    &rightTrackedRemoteState_new, &rightRemoteTracking_new, dt);
 
+    IN_Weapon_Update(nowMs); /* WEBXR-PORT M3-weapon: gunangles/weaponOffset/fire/haptics */
+
     WebXRInput_ProcessHaptics(frameMs);
     WebXRInput_DebugTick(nowMs);
 }
@@ -168,6 +171,7 @@ static void WebXRInput_OverlaySessionEnded(void); /* below (needs EM_JS) */
 
 void WebXRInput_Reset(void)
 {
+    IN_Weapon_SessionEnd(); /* WEBXR-PORT M3-weapon: release held keys, restore 3DoF */
     WebXRInput_OverlaySessionEnded();
     memset(webxr_controllers, 0, sizeof(webxr_controllers));
     memset(&leftTrackedRemoteState_new,  0, sizeof(leftTrackedRemoteState_new));
@@ -388,6 +392,7 @@ void WebXRInput_Init(void)
 {
     Cmd_AddCommand("vr_inputdebug", WebXRInput_DebugCmd_f,
                    "toggle live WebXR controller input state dump (overlay + console)");
+    IN_Weapon_Init(); /* WEBXR-PORT M3-weapon: weapon-cycle key binds */
     if (webxr_js_inputdebug_param())
         WebXRInput_SetDebug(1);
     printf("[webxr] input foundation initialised\n");

@@ -37,6 +37,7 @@
 #include "lib/webxr/webxr.h"
 #include "webxr_bridge.h"
 #include "webxr_input.h"   /* M3 foundation: controller snapshot + haptics */
+#include "in_weapon.h"     /* WEBXR-PORT M3-weapon: IN_Weapon_AimActive */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void QC_BeginFrame(bool stopTime);            /* vid_android.c */
@@ -476,12 +477,16 @@ static void WebXRBridge_OnXRFrame(void *userData, int timeMs,
      * so gameplay code (the four M3 chunks) sees this frame's state. */
     WebXRInput_Update(emscripten_get_now());
 
-    /* M2 aims with the head (controller-driven gunangles land with M3
-     * chunk 2): the fork sends gunangles, not viewangles, to the server as
-     * aim (cl_input.c:1845). */
-    gunangles[0] = hmdorientation[0];
-    gunangles[1] = hmdorientation[1];
-    gunangles[2] = 0.0f;
+    /* WEBXR-PORT M3-weapon: gunangles are controller-driven now (in_weapon.c,
+     * dispatched from WebXRInput_Update above). Head aim (M2 behavior) stays
+     * as the fallback for frames with no located controller aim pose — the
+     * fork sends gunangles, not viewangles, to the server (cl_input.c:1845). */
+    if (!IN_Weapon_AimActive())
+    {
+        gunangles[0] = hmdorientation[0];
+        gunangles[1] = hmdorientation[1];
+        gunangles[2] = 0.0f;
+    }
 
     /* the same pump AppThreadFunction ran (QuakeQuest_OpenXR.c:276-310),
      * minus OpenXR swapchain calls (WebXR submit is implicit on return) */
