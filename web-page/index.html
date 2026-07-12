@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QuakeQuest Web — Quake VR in the browser</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>Q</text></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-512.png">
+<meta name="theme-color" content="#111111">
+<style>
+  html, body { margin: 0; padding: 0; background: #111; color: #ddd;
+               font-family: system-ui, sans-serif; height: 100%; }
+  #wrap { display: flex; flex-direction: column; align-items: center; gap: 10px;
+          padding: 16px; }
+  #buttons { display: flex; gap: 12px; }
+  canvas { background: #000; image-rendering: pixelated; outline: none;
+           max-width: 100%; }
+  #start, #entervr { font-size: 1.4rem; padding: 12px 40px; cursor: pointer;
+           color: #fff; border-radius: 6px; }
+  #start { background: #7a2b16; border: 1px solid #a8452a; }
+  #entervr { background: #16537a; border: 1px solid #2a7aa8; }
+  #start:disabled, #entervr:disabled { background: #333; border-color: #444;
+           color: #888; cursor: not-allowed; }
+  #status { font-size: .9rem; color: #999; min-height: 1.2em; }
+  #hint { font-size: .8rem; color: #666; }
+  #pakbox { font-size: .85rem; color: #999; border: 1px dashed #444;
+            border-radius: 6px; padding: 10px 14px; max-width: 640px; }
+  #pakbox summary { cursor: pointer; color: #bbb; }
+  #pakbox .note { color: #7a9; }
+  #pak-status { color: #9ab; min-height: 1.1em; display: block; margin-top: 6px; }
+  #pak-clear { margin-left: 10px; font-size: .8rem; cursor: pointer;
+               background: #333; color: #ccc; border: 1px solid #555;
+               border-radius: 4px; padding: 2px 8px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h2>QuakeQuest Web — Quake VR in the browser</h2>
+  <div id="buttons">
+    <button id="start" disabled>Loading&hellip;</button>
+    <button id="entervr" disabled>Checking VR&hellip;</button>
+  </div>
+  <div id="status">fetching engine&hellip;</div>
+  <canvas id="canvas" width="1280" height="720" tabindex="0"
+          oncontextmenu="event.preventDefault()"></canvas>
+  <div id="hint">Click the canvas to capture the mouse &middot; WASD move &middot;
+    mouse look/fire &middot; Esc menu (also frees the mouse) &middot; ` console<br>
+    On a headset: just click <b>Enter VR</b> &middot; left stick move &middot;
+    right stick turn &middot; trigger fire &middot; off-hand stick click menu
+    (hold to recenter) &middot; X/Y quicksave/load</div>
+  <details id="pakbox">
+    <summary>Full game data (optional) — bring your own pak files</summary>
+    <p>This page ships only the freely redistributable <b>shareware</b> episode.
+      If you own the full game, pick its <code>.pak</code> file(s) here — the
+      classic layout is <code>pak0.pak</code>&nbsp;+&nbsp;<code>pak1.pak</code>
+      from an original/GOG-classic <code>id1</code> folder.</p>
+    <p class="note"><b>Local only:</b> your files are stored in this browser's
+      own storage (IndexedDB) and read by the game right here on your machine.
+      They are <b>never uploaded to any server</b>.</p>
+    <input type="file" id="pak-input" accept=".pak,.pk3" multiple disabled>
+    <button id="pak-clear" hidden>Remove local pak files</button>
+    <span id="pak-status"></span>
+  </details>
+</div>
+<script>
+  const startBtn = document.getElementById('start');
+  const vrBtn = document.getElementById('entervr');
+  const statusEl = document.getElementById('status');
+  const params = new URLSearchParams(location.search);
+
+  let engineRunning = false;
+  let xrActive = false;
+  let xrSupported = false;
+
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    // WebXR bridge tunable (library_webxr.js): 1.0 = native XRWebGLLayer scale
+    webxr_framebuffer_scale_factor: 1.0,
+    // Persistence (M1 issue #4): /quake_user is an IDBFS mount, populated
+    // from IndexedDB before main() can run (run dependency blocks
+    // onRuntimeInitialized until the initial sync completes).
+    preRun: [() => {
+      const FS = Module.FS;
+      Module.addRunDependency('idbfs');
+      FS.mkdir('/quake_user');
+      FS.mount(FS.filesystems.IDBFS, {}, '/quake_user');
+      FS.syncfs(true, (err) => {
+        if (err) console.warn('[persist] initial IDBFS sync failed:', err);
+        Module.removeRunDependency('idbfs');
+      });
+    }],
+    // engine main() is invoked from the Start click (user activation for
+    // pointer lock + audio); build links with -sINVOKE_RUN=0
+    onRuntimeInitialized: () => {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Quake';
+      statusEl.textContent = 'ready — shareware pak0.pak preloaded';
+      pakInput.disabled = false;
+      refreshPakStatus();
+      // dev convenience for headless tests: ?autostart=1 skips the click
+      if (params.get('autostart')) startEngine();
+    },
+    setStatus: (t) => { if (t) statusEl.textContent = t; },
+    printErr: (t) => console.error(t),
+  };
+
+  function updateVRButton() {
+    if (xrActive) {
+      vrBtn.disabled = false;
+      vrBtn.textContent = 'Exit VR';
+    } else if (!xrSupported) {
+      vrBtn.disabled = true;
+      vrBtn.textContent = 'VR not available in this browser';
+      vrBtn.title = 'Open this page in a headset browser (e.g. Quest)';
+    } else {
+      vrBtn.disabled = false;
+      vrBtn.textContent = 'Enter VR';
+    }
+  }
+
+  // webxr_bridge.c reports session state through this (EM_JS)
+  window.onQuakeXRState = (active) => {
+    xrActive = active;
+    statusEl.textContent = active ? 'immersive session active'
+                                  : (engineRunning ? 'running' : statusEl.textContent);
+    updateVRButton();
+  };
+
+  if (navigator.xr && navigator.xr.isSessionSupported) {
+    navigator.xr.isSessionSupported('immersive-vr').then((ok) => {
+      xrSupported = ok;
+      updateVRButton();
+    }, () => { xrSupported = false; updateVRButton(); });
+  } else {
+    updateVRButton();
+  }
+
+  function startEngine() {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Running';
+    statusEl.textContent = 'engine starting…';
+    try {
+      // dev/test argv passthrough (M3 integration; reports/08b open issue 6):
+      // ?args=+skill 0 +map start  (space-separated)  or the older
+      // ?startargs=+map,start     (comma-separated, m3-comfort harness)
+      const extraArgs = ((params.get('args') || '').match(/\S+/g))
+        || (params.get('startargs') || '').split(',').filter(Boolean);
+      Module.callMain(extraArgs);
+      engineRunning = true;
+      statusEl.textContent = 'running';
+      Module.canvas.focus();
+      updateVRButton();
+    } catch (e) {
+      statusEl.textContent = 'engine failed to start — see console';
+      console.error(e);
+      throw e;
+    }
+    // M2 FBO smoke test hook (dev): ?fbotest=1 arms the external-FBO render
+    // probe once the demo is visibly running (see src/web-host/fbo_smoketest.c)
+    if (params.get('fbotest')) {
+      setTimeout(() => Module._WebFBOTest_Request(), 9000);
+    }
+  }
+
+  startBtn.addEventListener('click', startEngine);
+
+  // Enter VR is its OWN user-activation click, independent of Start
+  // (design doc risk #9: requestSession must run inside a fresh activation).
+  vrBtn.addEventListener('click', () => {
+    // Bug-3 hardening: ask the C side for the live session truth (it
+    // self-heals stale teardown state) instead of trusting the page's
+    // xrActive mirror, which goes stale if an exit notification was lost.
+    const active = (engineRunning && Module._WebXRBridge_IsSessionActive)
+      ? !!Module._WebXRBridge_IsSessionActive() : xrActive;
+    if (active) { Module._WebXRBridge_RequestExit(); return; }
+    // One-click entry: start the engine if needed, then request the session
+    // inside the same user activation (headset users shouldn't need two
+    // separate clicks).
+    if (!engineRunning) {
+      if (typeof Module.callMain !== 'function') {
+        // wasm runtime not ready yet (button enables on isSessionSupported,
+        // which can resolve first) — don't crash, just ask for another click
+        statusEl.textContent = 'engine still loading — try again in a moment';
+        return;
+      }
+      startEngine();
+    }
+    Module._WebXRBridge_RequestSession();
+  });
+
+  // ---- Full-game data drop-in (M4) ----
+  // User-picked pak files are written into /quake_user/id1/ (the same IDBFS
+  // mount the engine's -userdir points at, so they persist across reloads
+  // and the engine's search path picks them up ahead of the preloaded
+  // shareware pak). CLIENT-SIDE ONLY: file bytes go browser-local into
+  // IndexedDB; there is no upload — this page has no server backend at all.
+  const pakInput = document.getElementById('pak-input');
+  const pakStatus = document.getElementById('pak-status');
+  const pakClear = document.getElementById('pak-clear');
+  const PAK_DIR = '/quake_user/id1';
+
+  function listLocalPaks() {
+    try {
+      return Module.FS.readdir(PAK_DIR)
+        .filter(n => /\.(pak|pk3)$/i.test(n));
+    } catch (e) { return []; }
+  }
+
+  function refreshPakStatus(msg) {
+    const paks = listLocalPaks();
+    pakClear.hidden = paks.length === 0;
+    if (msg) { pakStatus.textContent = msg; return; }
+    pakStatus.textContent = paks.length
+      ? 'local game data present: ' + paks.join(', ')
+      : '';
+  }
+
+  function syncPaks() {
+    return new Promise((res) => Module.FS.syncfs(false, (err) => {
+      if (err) console.warn('[pak] IndexedDB sync failed:', err);
+      res();
+    }));
+  }
+
+  pakInput.addEventListener('change', async () => {
+    const files = Array.from(pakInput.files || []);
+    if (!files.length) return;
+    pakInput.disabled = true;
+    try {
+      Module.FS.mkdirTree(PAK_DIR);
+      const stored = [];
+      for (const f of files) {
+        const name = f.name.toLowerCase();
+        if (!/\.(pak|pk3)$/.test(name)) {
+          console.warn('[pak] skipping non-pak file:', f.name);
+          continue;
+        }
+        pakStatus.textContent = 'reading ' + f.name + '…';
+        const data = new Uint8Array(await f.arrayBuffer());
+        Module.FS.writeFile(PAK_DIR + '/' + name, data);
+        stored.push(name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)');
+      }
+      pakStatus.textContent = 'saving to browser storage…';
+      await syncPaks();
+      // running engine: rebuild the search path now (fs_rescan also
+      // re-checks gfx/pop.lmp -> registered). Otherwise the paks are
+      // simply there when Start runs FS_Init.
+      if (engineRunning && Module._WebHost_RescanFS) Module._WebHost_RescanFS();
+      refreshPakStatus('stored locally: ' + stored.join(', ')
+        + (engineRunning ? ' — rescanned; start a NEW GAME to use it'
+                         : ' — will be used when the game starts')
+        + ' (browser-local only, nothing uploaded)');
+    } catch (e) {
+      console.error('[pak] store failed:', e);
+      refreshPakStatus('failed to store pak: ' + e);
+    } finally {
+      pakInput.disabled = false;
+      pakInput.value = '';
+    }
+  });
+
+  pakClear.addEventListener('click', async () => {
+    const paks = listLocalPaks();
+    for (const n of paks) {
+      try { Module.FS.unlink(PAK_DIR + '/' + n); }
+      catch (e) { console.warn('[pak] unlink failed:', n, e); }
+    }
+    await syncPaks();
+    if (engineRunning && Module._WebHost_RescanFS) Module._WebHost_RescanFS();
+    refreshPakStatus(paks.length
+      ? 'removed ' + paks.join(', ') + (engineRunning ? ' — reload the page' : '')
+      : '');
+  });
+
+  // Flush config/saves to IndexedDB when the tab goes to background/away.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && engineRunning && Module._WebHost_PersistNow)
+      Module._WebHost_PersistNow();
+  });
+
+  // ---- PWA: service worker registration (offline + installable) ----
+  // Precaches engine + shareware data only (see sw.js header for the legal
+  // constraint on what may be cached — never the user's own pak files, which
+  // live in IndexedDB and never touch a fetch this worker could see).
+  // ?nosw=1 is a test escape hatch for harnesses that want a guaranteed
+  // network-only page (see src/web-host/test/m4-pwa-test.mjs).
+  if ('serviceWorker' in navigator && !params.get('nosw')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        console.log('[pwa] service worker registered, scope:', reg.scope);
+      }).catch((err) => {
+        console.warn('[pwa] service worker registration failed:', err);
+      });
+    });
+  }
+</script>
+<script async src="quake.js"></script>
+</body>
+</html>

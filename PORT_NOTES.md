@@ -327,6 +327,76 @@ eyes lit and stereo-distinct on every entry) in three UA flavors: plain IWER
 IWER + original-spec throwing rAF shim (`endquirk`, reproduces this bug —
 hung at exit#1 pre-fix, 72/72 checks green post-fix, 0 console errors).
 
+## PWA — installable + offline (2026-07-12)
+
+**Layout change:** `web/` is now pure build output. The authored page shell
+lives in `src/web-page/` (git-tracked):
+
+```
+src/web-page/
+├── index.html            source of truth (was web/index.html, hand-edited, not in git)
+├── manifest.webmanifest
+├── sw.js                 has __BUILD_VERSION__ placeholder, stamped by build.sh
+├── icons/                icon-192.png, icon-512.png, icon-512-maskable.png (committed PNGs)
+└── tools/
+    ├── icon.svg, icon-maskable.svg   hand-authored source of truth for the icons
+    └── gen-icons.mjs                 rasterizes the SVGs (puppeteer-core) — run manually, not at build time
+```
+
+`build.sh`'s last step copies `web-page/{index.html,manifest.webmanifest,sw.js,icons/}`
+into `$WEBOUT` and stamps `sw.js`'s `BUILD_VERSION` with
+`sha256(quake.wasm + quake.data + index.html) | cut -c1-12` — the cache name
+changes automatically whenever anything SW-relevant changes; never bump it
+by hand.
+
+**manifest.webmanifest**: name "QuakeQuest Web" / short_name "QuakeQuest",
+`display: standalone`, `#111111` background/theme (matches the page), 192 +
+512 + a maskable 512 icon. Linked from `index.html` via `<link rel=manifest>`
++ `<meta name=theme-color>`.
+
+**sw.js — cache-first, versioned precache.** Precaches exactly 8 entries:
+the app shell (`./`), `quake.js`, `quake.wasm`, `quake.data` (shareware),
+`manifest.webmanifest`, and the 3 icons. **Legal/privacy constraint (stated
+in the file's own header comment): this list must never include user
+full-game pak files** — those are written by the page straight into IndexedDB
+(IDBFS), never over HTTP, so this service worker never sees them and can't
+accidentally cache/leak them. `install` uses `cache: 'reload'` requests
+(bypasses HTTP cache) + `skipWaiting()`; `activate` deletes any
+`quakequest-*` cache that isn't the current version + `clients.claim()`.
+Navigation requests are served the cached shell regardless of path/query
+(SPA), re-wrapped to force `Cross-Origin-Opener-Policy: same-origin` +
+`Cross-Origin-Embedder-Policy: require-corp` so an **offline reload still
+reports `crossOriginIsolated === true`** even if upstream headers ever
+change. Registered from `index.html` only when `'serviceWorker' in
+navigator`, after `load`; `?nosw=1` skips registration (test escape hatch).
+
+SW registration is isolated per origin+port, so it does not affect the
+existing m3/m4 test harnesses running on their own ports (verified:
+`m3-integration-test.mjs` still 18/18, 0 console errors, against a build
+with the SW active on the same port).
+
+**.htaccess**: added `AddType application/manifest+json .webmanifest` and a
+`<Files "sw.js"> Header set Cache-Control "no-cache" </Files>` block (on top
+of the existing `.js` no-cache rule) so an sw.js update is always visible on
+the next load — required for the versioned-cache update path to ever fire.
+
+**Test**: `web-host/test/m4-pwa-test.mjs` (20 checks) — runs its own local
+server on port 8096 (reuses `web/serve.mjs`), checks manifest fetch/parse,
+SW registration → `activated`, all 8 precache entries present, then
+`page.setOfflineMode(true)` + reload: page loads from cache, engine boots
+(`?autostart=1`, waits for `[web-host] engine initialised`),
+`crossOriginIsolated === true`. Then the update path: bumps the on-disk
+`web/sw.js` `BUILD_VERSION`, issues `registration.update()` online, polls
+until the old cache is deleted and a new one (matching the bumped version)
+is fully populated — then restores the original file. All green, 0 console
+errors, both online and offline.
+
+**Open question for on-device verification (not solved here):** whether the
+Quest Browser's *installed* PWA shares IndexedDB with the regular browser
+tab — i.e. whether a full-game pak dropped in via the tab is visible to the
+installed app, or whether they're separate storage partitions. Check this
+on-headset.
+
 ## M2 architecture (see reports/05-webxr-bridge-design.md — implemented as designed)
 
 - `web-host/lib/webxr/` — vendored emscripten-webxr @1bc0b7b with **11
@@ -406,7 +476,10 @@ node web/serve.mjs 8090     # then open http://localhost:8090/
 ```
 
 Output: `web/quake.js` + `web/quake.wasm` + `web/quake.data` (18.7MB shareware
-pak preloaded to MEMFS at `/quake/id1/pak0.pak`).
+pak preloaded to MEMFS at `/quake/id1/pak0.pak`), plus `web/index.html` +
+`web/manifest.webmanifest` + `web/sw.js` + `web/icons/` copied (and
+version-stamped) from `src/web-page/` — see the PWA section above. `web/` is
+generated in full; edit `src/web-page/` and rebuild, never `web/` directly.
 
 ## Architecture
 

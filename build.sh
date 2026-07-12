@@ -209,3 +209,23 @@ fi
 echo "== linking =="
 emcc $OBJS -o "$WEBOUT/quake.js" $LDFLAGS
 echo "== done: $WEBOUT/quake.js + quake.wasm + quake.data =="
+
+# --- web-page shell (PWA): copy authored sources into $WEBOUT, stamp SW version ---
+# web-page/ is the git-tracked source of truth (index.html, manifest, service
+# worker, icons); $WEBOUT (default ../web) becomes pure build output — never
+# hand-edit files there directly, edit web-page/ and rebuild.
+echo "== copying web-page shell (manifest/sw/icons) =="
+cp web-page/index.html "$WEBOUT/index.html"
+cp web-page/manifest.webmanifest "$WEBOUT/manifest.webmanifest"
+cp web-page/sw.js "$WEBOUT/sw.js"
+mkdir -p "$WEBOUT/icons"
+cp web-page/icons/*.png "$WEBOUT/icons/"
+
+# Stamp the service worker's cache version: a short hash of exactly the files
+# it precaches that can change between builds (engine + shareware data + the
+# page shell). This makes the cache name change automatically on every build
+# that actually changes something SW-relevant — no manual version bumps, and
+# no needless cache-busting when only e.g. web-host/test/*.mjs changed.
+BUILD_VERSION=$(cat "$WEBOUT/quake.wasm" "$WEBOUT/quake.data" "$WEBOUT/index.html" | sha256sum | cut -c1-12)
+sed -i "s/__BUILD_VERSION__/$BUILD_VERSION/" "$WEBOUT/sw.js"
+echo "== web-page shell copied, sw.js stamped with build $BUILD_VERSION =="
