@@ -136,6 +136,7 @@ web-host/in_weapon.c
 web-host/in_menu.c
 web-host/vr_menu_quad.c
 web-host/in_locomotion.c
+web-host/in_comfort.c
 "
 
 # --- audio backend ---

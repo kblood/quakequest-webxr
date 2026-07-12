@@ -278,6 +278,17 @@ gamepad.hapticActuators[0].pulse() (playEffect fallback). Safe no-op (returns
 @returns 1 if a pulse was issued, else 0. */
 extern int webxr_haptic_pulse(int handedness, float intensity, int durationMs);
 
+/* WEBXR-PORT PATCH #14: manual recenter — replaces the active reference
+space with a yaw+position-offset copy of itself (position X/Z + yaw-only
+orientation of the current viewer pose; Y left at 0 so local-floor height
+is untouched). Head AND controller poses both read this same space, so the
+recenter is consistent across gameplay code with no extra bookkeeping.
+Must be called during the frame callback (needs the live XRFrame).
+
+@returns 1 if applied, 0 if there is no session/frame/pose (e.g. called
+outside the frame callback, or before the first tracked frame). */
+extern int webxr_recenter(void);
+
 #ifdef __cplusplus
 }
 #endif

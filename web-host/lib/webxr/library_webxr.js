@@ -428,6 +428,73 @@ webxr_haptic_pulse: function(hand, intensity, durationMs) {
     return 0;
 },
 
+/* WEBXR-PORT PATCH #14: manual recenter (M3 comfort/calibration). The
+ * fork's TBXR_Recenter (TBXR_Common.c:1818-1860) rebuilds the OpenXR
+ * reference space so HEAD *and* CONTROLLER poses relocate to a fresh
+ * origin — but it is only ever invoked reactively, from the runtime's own
+ * system-level recenter gesture (XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING
+ * via ovrApp_HandleXrEvents), never from an in-game control (grepped the
+ * whole fork tree — no button ever calls it). WebXR's 'local-floor' space
+ * already gets that reactive case for free (browsers apply the platform
+ * recenter to the space transparently). This function adds the piece the
+ * fork never had: an EXPLICIT, in-game-bindable recenter (web-host's
+ * in_comfort.c binds it to the off-hand thumbstick click and the
+ * `vr_recenter` console command — reports/08d-comfort.md).
+ *
+ * getOffsetReferenceSpace is the WebXR-idiomatic equivalent of rebuilding
+ * the reference space: both the head pose (onFrame's getViewerPose) and
+ * controller poses (webxr_get_controller_state's `ref`) are read from the
+ * SAME WebXR.refSpaces[WebXR.refSpace] object, so replacing it here keeps
+ * every consumer's coordinate frame consistent automatically — no separate
+ * offset bookkeeping needed on the C side, and no risk of the gun (which
+ * reads controller position minus head position) drifting relative to the
+ * hand the way a C-side-only head-position offset would.
+ *
+ * Per the XRReferenceSpace spec, getOffsetReferenceSpace(originOffset)
+ * reports poses as inverse(originOffset) * pose_in_base_space; passing the
+ * viewer's OWN current transform (position + orientation) as originOffset
+ * therefore makes "here, facing this way" read as identity in the new
+ * space — the standard WebXR "reset pose" idiom. Two deviations from the
+ * literal viewer transform, both intentional:
+ *   - Y (height) is zeroed in the offset: local-floor already supplies
+ *     floor-relative height, and the fork's own recenter never touched
+ *     height either (playerHeight is a separate, transition-latched
+ *     mechanism — webxr_bridge.c VR_SetHMDPosition). in_comfort.c
+ *     separately re-latches playerHeight when this returns success.
+ *   - Only the yaw ("twist" around the world Y axis) of the orientation is
+ *     used, via the standard swing-twist projection (qy,qw normalized) —
+ *     a full 3-DoF reset would tilt the rendered world if the player
+ *     happened to be looking up/down/tilted at the moment of the press,
+ *     which every shipped VR recenter avoids.
+ * Must run inside the frame callback (needs the live XRFrame for
+ * getViewerPose), matching webxr_get_controller_state's constraint. */
+webxr_recenter: function() {
+    const s = Module['webxr_session'];
+    const f = Module['webxr_frame'];
+    const cur = WebXR.refSpaces[WebXR.refSpace];
+    if (!s || !f || !cur) return 0;
+
+    const pose = f.getViewerPose(cur);
+    if (!pose) return 0;
+
+    try {
+        const p = pose.transform.position;
+        const o = pose.transform.orientation;
+        let qy = o.y, qw = o.w;
+        const len = Math.sqrt(qy * qy + qw * qw) || 1;
+        qy /= len; qw /= len;
+
+        const offset = new XRRigidTransform(
+            { x: p.x, y: 0, z: p.z },
+            { x: 0, y: qy, z: 0, w: qw });
+        WebXR.refSpaces[WebXR.refSpace] = cur.getOffsetReferenceSpace(offset);
+        return 1;
+    } catch (e) {
+        console.warn('[webxr] recenter failed:', e);
+        return 0;
+    }
+},
+
 webxr_get_input_pose: function(source, outPosePtr, space) {
     let f = Module['webxr_frame'];
     if(!f) {

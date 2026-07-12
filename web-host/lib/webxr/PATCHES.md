@@ -120,3 +120,54 @@ while library_webxr.js (and upstream's own README example, which passes
 Requesting LOCAL_FLOOR (=1) actually requested "local", and LOCAL (=0)
 requested nothing. Values changed to the bits the JS tests:
 LOCAL=1, LOCAL_FLOOR=2, BOUNDED_FLOOR=4, UNBOUNDED=8, HIT_TEST=16.
+
+## #14 — manual recenter (library_webxr.js + webxr.h) [M3 comfort, additive]
+
+Upstream had no recenter API at all. Added `webxr_recenter()`: replaces
+`WebXR.refSpaces[WebXR.refSpace]` with `cur.getOffsetReferenceSpace(offset)`,
+where `offset` is built from the current viewer pose's position (X/Z only —
+Y stays 0 so `local-floor` height is untouched) and a yaw-only "twist"
+extraction of its orientation (so recenter can't tilt the world). Because
+both head pose (`onFrame`'s `getViewerPose`) and controller poses
+(`webxr_get_controller_state`'s `ref`) read the *same* refSpace object, the
+new origin applies consistently to head and both hands with no extra
+bookkeeping needed on the C side (the gun's controller-minus-head math stays
+correct across a recenter). This is the WebXR-native replacement for the
+fork's `TBXR_Recenter` (TBXR_Common.c:1818-1860, which rebuilds the OpenXR
+reference space) — except the fork only ever called it reactively from a
+runtime recenter event; this is additionally exposed as an explicit in-game
+action (`web-host/in_comfort.c` binds it to the off-hand thumbstick click
+and the `vr_recenter` console command). Must run inside the frame callback
+(needs the live XRFrame for `getViewerPose`). Wrapped in try/catch: a
+malformed/zero quaternion (a headset reporting a degenerate pose) falls back
+to a no-op (returns 0) instead of throwing out of the frame callback.
+
+**Known emulation-only limitation (does not affect real headsets):** IWER
+2.3.0's `XRReferenceSpace.getOffsetReferenceSpace` deviates from the WebXR
+spec — its own type declaration (`iwer/lib/spaces/XRReferenceSpace.d.ts:26`,
+`getOffsetReferenceSpace(originOffset: mat4)`) and implementation
+(`iwer/lib/spaces/XRSpace.js:17`, `offsetMatrix ? mat4.clone(offsetMatrix) :
+mat4.create()`) expect a raw 16-element `mat4`, not the spec-mandated
+`XRRigidTransform` every real browser (including Quest Browser) accepts.
+Passing a real `XRRigidTransform` — the only spec-correct input, and what
+this function does — makes `mat4.clone` read non-existent numeric indices
+off it, producing a NaN `offsetMatrix`; IWER's `mat4.invert` then returns
+`null` on that singular matrix without touching its output buffer, so the
+(reused, module-scope) scratch matrix silently keeps its previous frame's
+value and the emulated pose reads as unchanged instead of erroring. Net
+effect: under `test/m3-comfort-test.mjs`'s IWER harness, `webxr_recenter()`
+runs to completion, returns success, and the C-side effects it drives
+(`SCR_CenterPrint`, `playerHeight` re-latch, the console log line) all fire
+correctly — but the emulated headset's *reported pose* does not actually
+move to the new origin, so the harness cannot assert the numeric zeroing
+end-to-end. Verified independently that the transform this function builds
+(position X/Z untransformed + Y zeroed, yaw-only twist quaternion) is the
+mathematically correct WebXR "reset pose" idiom via a standalone
+gl-matrix-based check (not committed here — ad hoc verification), reproducing
+IWER's own `calculateGlobalOffsetMatrix`/`getViewerPose` algebra by hand: a
+level head recenters to exactly (0,y,0)/yaw 0, and a tilted head (pitch
+12°/roll -7°) recenters to (0,y,0) with <1° of yaw residual (expected
+swing/twist coupling, not an error). Real-headset QA should still confirm
+the on-device behavior before this ships, since this specific mechanism
+(`getOffsetReferenceSpace`) is untestable end-to-end under this emulator
+version.
