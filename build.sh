@@ -135,6 +135,7 @@ web-host/webxr_input.c
 web-host/in_weapon.c
 web-host/in_menu.c
 web-host/vr_menu_quad.c
+web-host/in_locomotion.c
 "
 
 # --- audio backend ---

@@ -40,6 +40,7 @@
 #include "in_weapon.h"     /* WEBXR-PORT M3-weapon: IN_Weapon_AimActive */
 #include "in_menu.h"       /* WEBXR-PORT M3-hud: menu toggle + nav keys */
 #include "vr_menu_quad.h"  /* WEBXR-PORT M3-hud: world-anchored 2D-UI quad */
+#include "in_locomotion.h" /* WEBXR-PORT M3-loco: chunk 1 (locomotion/turning) */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void QC_BeginFrame(bool stopTime);            /* vid_android.c */
@@ -383,6 +384,7 @@ static void WebXRBridge_OnSessionStart(void *userData, int mode)
     s_projParamsSet = false;
     s_badViewCountLogged = 0;
     vrMode = 1;
+    WebXRLoco_OnSessionStart(); /* WEBXR-PORT M3-loco: undo the flatscreen vr_yawmode 0 boot override */
 
     /* Stop the flatscreen rAF pump; the XR session's rAF now owns the
      * QC_* frame protocol. (Design doc §3.) */

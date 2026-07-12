@@ -25,6 +25,7 @@
 
 #include "webxr_input.h"
 #include "in_weapon.h" /* WEBXR-PORT M3-weapon: weapon aim/fire/haptics chunk */
+#include "in_locomotion.h" /* WEBXR-PORT M3-loco: chunk 1 (locomotion/turning) */
 
 /* host globals (main_web.c / webxr_bridge.c) */
 extern float hmdorientation[3];
@@ -165,6 +166,8 @@ void WebXRInput_Update(double nowMs)
 
     WebXRInput_ProcessHaptics(frameMs);
     WebXRInput_DebugTick(nowMs);
+
+    WebXRLoco_Update(); /* WEBXR-PORT M3-loco: locomotion/turning gameplay dispatch */
 }
 
 static void WebXRInput_OverlaySessionEnded(void); /* below (needs EM_JS) */
@@ -395,5 +398,6 @@ void WebXRInput_Init(void)
     IN_Weapon_Init(); /* WEBXR-PORT M3-weapon: weapon-cycle key binds */
     if (webxr_js_inputdebug_param())
         WebXRInput_SetDebug(1);
+    WebXRLoco_Init(); /* WEBXR-PORT M3-loco: locomotion/turning gameplay dispatch */
     printf("[webxr] input foundation initialised\n");
 }
