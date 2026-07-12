@@ -30,6 +30,7 @@
 
 #include "webxr_bridge.h"   /* M2: WebXR session/rendering bridge */
 #include "vr_menu_quad.h"   /* WEBXR-PORT M3-hud: bigScreen state + menu quad */
+#include "in_weapon.h"      /* WEBXR-PORT M4: cl_trackingmode preference keeper */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void Host_Main(void);                       /* host.c  — Host_Init() only (loop already inverted) */
@@ -256,7 +257,11 @@ static double s_lastPersistMs = 0.0;
 EMSCRIPTEN_KEEPALIVE
 void WebHost_PersistNow(void)
 {
-	Host_SaveConfig();
+	/* WEBXR-PORT M4 (reports/08b issue 3): cl_trackingmode is CVAR_SAVE but
+	 * the mode-switch code forces it per-context (0 flatscreen, pref in VR);
+	 * this save variant writes the USER PREFERENCE to config.cfg, not the
+	 * currently forced runtime value. */
+	IN_Weapon_SaveConfigPreservingTrackingMode();
 	web_js_idbfs_sync();
 	s_lastPersistMs = emscripten_get_now();
 }
@@ -285,6 +290,10 @@ void WebHost_PersistTick(void)
 static void web_frame(void)
 {
 	WebHost_PersistTick();
+
+	/* WEBXR-PORT M4: pick up user changes to cl_trackingmode (console/menu)
+	 * on flatscreen frames too — XR frames tick inside IN_Weapon_Update. */
+	IN_Weapon_TrackingModeTick();
 
 	/* M2 FBO smoke test: when armed, this frame renders into an external,
 	 * raw-bound FBO instead of the canvas (see fbo_smoketest.c) */
@@ -371,9 +380,13 @@ int main(int argc, char **argv)
 
 	/* Flatscreen configuration + keyboard/mouse binds, queued after
 	 * quake.rc/config.cfg so they win over saved VR settings. */
+	/* cl_trackingmode is NOT forced here anymore (M4, reports/08b issue 3):
+	 * it is CVAR_SAVE, so stomping it from the command buffer clobbered the
+	 * user's saved preference. in_weapon.c now owns it — IN_Weapon_Init
+	 * latches the config.cfg value as the preference, then forces the
+	 * flatscreen 3DoF value 0 at runtime only. */
 	Cbuf_AddText(
 		"vr_yawmode 0\n"          /* IN_Move: absolute yaw from QC_MoveEvent */
-		"cl_trackingmode 0\n"     /* 3DoF viewmodel path — classic gun-follows-view */
 		"bind w +forward\n"
 		"bind s +back\n"
 		"bind a +moveleft\n"

@@ -47,6 +47,8 @@ float weaponVelocity[3];
 bool weapon_stabilised = false; /* fork: qboolean; bool here so the engine-free
                                  * header (in_weapon.h) can declare it */
 
+void Host_SaveConfig(void);             /* host.c — writes binds + CVAR_SAVE cvars */
+
 /* ---- private state ---- */
 /* PRIVATE previous-state copies for edge detection — deliberately NOT the
  * shared *TrackedRemoteState_old globals: four M3 chunks run from the same
@@ -60,6 +62,60 @@ static double s_nowMs = 0.0;           /* TBXR_GetTimeInMilliSeconds() stand-in 
 static int    s_hapticFireCount = 0;
 static float  s_hapticLastLevel = 0.0f;
 static int    s_hapticLastChannel = 0;
+
+/* =====================================================================
+ * cl_trackingmode: runtime value vs saved preference (M4 stomp fix,
+ * reports/08b open issue 3).
+ *
+ * Runtime rule (unchanged since M1/M3): flatscreen frames need 0 (classic
+ * gun-follows-view — with 1 the viewmodel pins to the head because
+ * weaponOffset stays zero), VR sessions run the user's chosen mode.
+ * The bug: cl_trackingmode is CVAR_SAVE, so forcing it (boot 0 / session
+ * start 1 / session end 0) leaked into config.cfg within one persist tick
+ * and the user's 3DoF/6DoF choice from the VR options menu never survived.
+ *
+ * Separation: s_userTrackingMode is THE preference; s_forcedTrackingMode is
+ * what this module last wrote. Any cvar value that differs from our last
+ * write must have come from the user (VR options menu toggle, console,
+ * test) and updates the preference. Config saves go through
+ * IN_Weapon_SaveConfigPreservingTrackingMode(), which swaps the preference
+ * in around Host_SaveConfig so the forced runtime value never persists.
+ * ===================================================================== */
+static int s_userTrackingMode   = -1;   /* -1 = not latched yet */
+static int s_forcedTrackingMode = -1;   /* our last write; -1 = none */
+
+static void TrackingMode_Force(int mode)
+{
+    if (cl_trackingmode.integer != mode)
+        Cvar_SetValueQuick(&cl_trackingmode, (float)mode);
+    s_forcedTrackingMode = mode;
+}
+
+void IN_Weapon_TrackingModeTick(void)
+{
+    if (s_userTrackingMode < 0)
+        return; /* init hasn't latched the saved preference yet */
+    if (cl_trackingmode.integer != s_forcedTrackingMode)
+    {
+        /* changed by something that isn't us -> new user preference */
+        s_userTrackingMode = cl_trackingmode.integer;
+        s_forcedTrackingMode = cl_trackingmode.integer;
+    }
+}
+
+void IN_Weapon_SaveConfigPreservingTrackingMode(void)
+{
+    int runtime = cl_trackingmode.integer;
+    IN_Weapon_TrackingModeTick(); /* catch a just-made user change first */
+    if (s_userTrackingMode >= 0 && runtime != s_userTrackingMode)
+    {
+        Cvar_SetValueQuick(&cl_trackingmode, (float)s_userTrackingMode);
+        Host_SaveConfig();
+        Cvar_SetValueQuick(&cl_trackingmode, (float)runtime);
+    }
+    else
+        Host_SaveConfig();
+}
 
 /* =====================================================================
  * Helpers ported verbatim
@@ -237,15 +293,18 @@ void IN_Weapon_Update(double nowMs)
     if (!WebXRBridge_IsSessionActive())
         return;
 
-    /* First frame of a session: the weapon decoupling below needs the
-     * engine's 6DoF weapon-matrix path (view.c:965-991). Flatscreen boot
-     * forces cl_trackingmode 0 (main_web.c); switch to the fork's VR default
-     * once per session — the VR options menu can still toggle it live. */
+    /* Watch for user changes (VR options menu / console) BEFORE any forcing
+     * below, so a live toggle updates the saved preference (M4 stomp fix). */
+    IN_Weapon_TrackingModeTick();
+
+    /* First frame of a session: flatscreen ran forced cl_trackingmode 0;
+     * apply the USER'S saved mode for VR (fork default 1 = 6DoF; a user who
+     * picked 3DoF in the VR options menu gets 3DoF back — the force-to-1
+     * here used to stomp that, reports/08b issue 3). */
     if (!s_inSession)
     {
         s_inSession = true;
-        if (cl_trackingmode.integer != 1)
-            Cvar_SetValueQuick(&cl_trackingmode, 1);
+        TrackingMode_Force(s_userTrackingMode >= 0 ? s_userTrackingMode : 1);
     }
 
     /* QuakeQuest_OpenXR.c:640-648 — yaw offset + dominant-hand selection */
@@ -365,10 +424,12 @@ void IN_Weapon_SessionEnd(void)
     s_aimActive = false;
     s_inSession = false;
 
-    /* back to the flatscreen operating point (main_web.c forces this only
-     * at boot): 3DoF = classic gun-follows-view */
-    if (cl_trackingmode.integer != 0)
-        Cvar_SetValueQuick(&cl_trackingmode, 0);
+    /* capture any in-session preference change made on the very last frames,
+     * then back to the flatscreen operating point: 3DoF = classic
+     * gun-follows-view. The user's mode is reapplied on the next session
+     * start and is what gets saved to config.cfg (M4 stomp fix). */
+    IN_Weapon_TrackingModeTick();
+    TrackingMode_Force(0);
 }
 
 void IN_Weapon_Init(void)
@@ -377,6 +438,16 @@ void IN_Weapon_Init(void)
      * (reports/06 §4 "Weapon switching"); the shareware pak has neither. */
     Cbuf_AddText("bind / \"impulse 10\"\n"
                  "bind # \"impulse 12\"\n");
+
+    /* M4 stomp fix: config.cfg was exec'd synchronously inside Host_Main()
+     * (host.c:1317-1318), so the cvar currently holds the user's SAVED
+     * preference — latch it before forcing the flatscreen runtime mode.
+     * (This force lived in main_web.c's Cbuf config block before, where it
+     * both raced the latch and looked like a user change; it is owned here
+     * now.) */
+    s_userTrackingMode = cl_trackingmode.integer;
+    TrackingMode_Force(0);
+
     Con_Printf("[webxr] weapon input initialised (M3-weapon)\n");
 }
 
@@ -407,6 +478,7 @@ double IN_Weapon_Probe(int what)
     case 23: return (double)s_hapticLastChannel;
     case 24: return (double)cl_righthanded.integer;
     case 25: case 26: case 27: return hmdPosition[what - 25]; /* XR meters */
+    case 28: return (double)s_userTrackingMode; /* saved preference (M4) */
     default: return -99999.0;
     }
 }

@@ -43,6 +43,26 @@ void IN_Weapon_SessionEnd(void);
  * head-aim (M2 behavior) is only applied as a fallback when this is false. */
 bool IN_Weapon_AimActive(void);
 
+/* ---- cl_trackingmode stomp fix (M4; reports/08b open issue 3) ----
+ * The mode-switch code needs cl_trackingmode 0 on flatscreen frames and the
+ * user's choice (fork default 1) in VR, but cl_trackingmode is CVAR_SAVE —
+ * naively writing it each transition clobbered the saved preference.
+ * in_weapon.c now keeps the USER PREFERENCE separate from the runtime value:
+ * the preference is latched from config.cfg at init, updated whenever the
+ * cvar changes through anything that isn't our own forced write (VR options
+ * menu, console, tests), applied on session start, and swapped in around
+ * Host_SaveConfig so config.cfg always records the preference, never the
+ * flatscreen-forced 0. */
+
+/* Detect user/menu/console changes to cl_trackingmode. Called every VR frame
+ * (inside IN_Weapon_Update) AND every flatscreen frame (main_web.c). */
+void IN_Weapon_TrackingModeTick(void);
+
+/* Host_SaveConfig with the user's tracking-mode preference swapped in
+ * (restores the runtime value afterwards). main_web.c persistence uses this
+ * instead of calling Host_SaveConfig directly. */
+void IN_Weapon_SaveConfigPreservingTrackingMode(void);
+
 /* Ported fork haptics entry point (QuakeQuest_OpenXR.c:369-467): per-weapon
  * rumble while the fire trigger is held, channel = both hands when
  * weapon-stabilised. Signature kept identical to the fork's so any future
