@@ -261,6 +261,19 @@ void WebHost_PersistNow(void)
 	s_lastPersistMs = emscripten_get_now();
 }
 
+/* WEBXR-PORT M4: full-game data drop-in. The page writes user-supplied
+ * pak files (e.g. registered pak1.pak) into /quake_user/id1/ (the IDBFS
+ * mount -userdir points at) and calls this so the running engine picks
+ * them up: fs_rescan rebuilds the search path (FS_AddGameDirectory scans
+ * userdir/id1/*.pak, userdir wins over the preloaded shareware pak) and
+ * re-checks gfx/pop.lmp to flip the `registered` cvar. Game data stays
+ * browser-local — nothing is ever sent to a server. */
+EMSCRIPTEN_KEEPALIVE
+void WebHost_RescanFS(void)
+{
+	Cbuf_AddText("fs_rescan\n");
+}
+
 /* Called once per pumped frame (flatscreen loop AND XR loop). */
 void WebHost_PersistTick(void)
 {
