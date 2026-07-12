@@ -286,6 +286,28 @@
   // ?nosw=1 is a test escape hatch for harnesses that want a guaranteed
   // network-only page (see src/web-host/test/m4-pwa-test.mjs).
   if ('serviceWorker' in navigator && !params.get('nosw')) {
+    // A deploy means a new sw.js (served no-cache) with a new BUILD_VERSION;
+    // it installs, skipWaiting()s and claims this page — but the page itself
+    // already ran off the OLD cache, so without help the user needs a second
+    // manual reload to actually get the new build. Auto-reload once on
+    // takeover, but never yank a running game out from under the player.
+    // controllerchange also fires on the very first visit (clients.claim on a
+    // previously uncontrolled page) — that load came straight from the
+    // network and is already current, so only reload when a controller
+    // EXISTED at load time (i.e. a genuine old-version -> new-version swap).
+    const hadController = !!navigator.serviceWorker.controller;
+    let swReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swReloaded || !hadController) return;
+      swReloaded = true;
+      if (!engineRunning) {
+        console.log('[pwa] updated service worker took over — reloading');
+        location.reload();
+      } else {
+        statusEl.textContent =
+          'updated version downloaded — reload the page to use it';
+      }
+    });
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').then((reg) => {
         console.log('[pwa] service worker registered, scope:', reg.scope);
