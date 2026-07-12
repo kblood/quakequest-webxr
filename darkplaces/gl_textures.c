@@ -91,7 +91,24 @@ static textypeinfo_t textype_shadowmap24_comp            = {"shadowmap24_comp", 
 static textypeinfo_t textype_shadowmap24_raw             = {"shadowmap24_raw",          TEXTYPE_SHADOWMAP24_RAW      ,  4,  4,  4.0f, GL_DEPTH_COMPONENT24_OES              , GL_DEPTH_COMPONENT24_OES, GL_UNSIGNED_SHORT};
 static textypeinfo_t textype_depth16                     = {"depth16",                  TEXTYPE_DEPTHBUFFER16        ,  2,  2,  2.0f, GL_DEPTH_COMPONENT16              , GL_DEPTH_COMPONENT16, GL_UNSIGNED_SHORT};
 static textypeinfo_t textype_depth24                     = {"depth24",                  TEXTYPE_DEPTHBUFFER24        ,  4,  4,  4.0f, GL_DEPTH_COMPONENT24_OES              , GL_DEPTH_COMPONENT24_OES, GL_UNSIGNED_SHORT};
+#ifdef __EMSCRIPTEN__
+// WEBXR-PORT: WebGL2 renderbuffers require a *sized* internal format;
+// unsized GL_DEPTH_COMPONENT is GL_INVALID_ENUM there. GL_DEPTH24_STENCIL8
+// is core in WebGL2 (used for the water/view FBO depth attachment).
+// (enums spelled numerically: the GLES2 headers don't declare them)
+#ifndef GL_DEPTH24_STENCIL8
+#define GL_DEPTH24_STENCIL8 0x88F0
+#endif
+#ifndef GL_DEPTH_STENCIL
+#define GL_DEPTH_STENCIL 0x84F9
+#endif
+#ifndef GL_UNSIGNED_INT_24_8
+#define GL_UNSIGNED_INT_24_8 0x84FA
+#endif
+static textypeinfo_t textype_depth24stencil8             = {"depth24stencil8",          TEXTYPE_DEPTHBUFFER24STENCIL8,  4,  4,  4.0f, GL_DEPTH24_STENCIL8              , GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8};
+#else
 static textypeinfo_t textype_depth24stencil8             = {"depth24stencil8",          TEXTYPE_DEPTHBUFFER24STENCIL8,  2,  2,  2.0f, GL_DEPTH_COMPONENT              , GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT};
+#endif
 static textypeinfo_t textype_colorbuffer_32                 = {"colorbuffer",              TEXTYPE_COLORBUFFER          ,  4,  4,  4.0f, GL_RGBA                               , GL_RGBA           , GL_UNSIGNED_BYTE};
 static textypeinfo_t textype_colorbuffer16f_32              = {"colorbuffer16f",           TEXTYPE_COLORBUFFER16F       ,  4,  4,  4.0f, GL_RGBA                               , GL_RGBA           , GL_UNSIGNED_BYTE};
 static textypeinfo_t textype_colorbuffer32f_32              = {"colorbuffer32f",           TEXTYPE_COLORBUFFER32F       ,  4,  4,  4.0f, GL_RGBA                               , GL_RGBA           , GL_UNSIGNED_BYTE};

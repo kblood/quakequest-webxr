@@ -1127,6 +1127,30 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		geomstrings_list[geomstrings_count++] = "#define GLSL130\n";
 		fragstrings_list[fragstrings_count++] = "#define GLSL130\n";
 	}
+#ifdef __EMSCRIPTEN__
+	// WEBXR-PORT: GLSL ES 1.00 fragment shaders have NO default float
+	// precision; the MODE_WATER/MODE_REFRACTION permutations declare
+	// unqualified float/vec locals ("float f", "vec4 distort", ...) and
+	// WebGL2's strict compiler rejects them ("No precision specified for
+	// (float)") where Android drivers were lenient. Declare a default
+	// fragment float precision up front (vertex shaders default to highp
+	// already). Guarded to the web build to leave the Android fork's
+	// shader stream byte-identical.
+	else
+	{
+		fragstrings_list[fragstrings_count++] =
+			"#ifdef GL_ES\n"
+			"#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+			"precision highp float;\n"
+			"#else\n"
+			"precision mediump float;\n"
+			"#endif\n"
+			"#endif\n";
+		// keep vertex/geometry line numbering aligned with fragment
+		vertstrings_list[vertstrings_count++] = "\n\n\n\n\n\n\n";
+		geomstrings_list[geomstrings_count++] = "\n\n\n\n\n\n\n";
+	}
+#endif
 
 	// the first pretext is which type of shader to compile as
 	// (later these will all be bound together as a program object)

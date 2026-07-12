@@ -200,14 +200,35 @@ void GLES_Init(void)
 	vid.support.arb_texture_cube_map = true;
 	vid.support.arb_texture_env_combine = false;
 	vid.support.arb_texture_gather = false;
+#ifdef __EMSCRIPTEN__
+	// WEBXR-PORT: NPOT textures are core in WebGL2 — the GL_OES_texture_npot
+	// string is never advertised there, so the strstr check below would
+	// leave this false and disable the water/view FBO path (usewaterfbo
+	// requires it) plus force power-of-two water texture sizes.
+	vid.support.arb_texture_non_power_of_two = true;
+#else
 	vid.support.arb_texture_non_power_of_two = strstr(gl_extensions, "GL_OES_texture_npot") != NULL;
+#endif
 	vid.support.arb_vertex_buffer_object = true;
 	vid.support.arb_uniform_buffer_object = false;
 	vid.support.ati_separate_stencil = false;
 	vid.support.ext_blend_minmax = false;
 	vid.support.ext_blend_subtract = true;
 	vid.support.ext_draw_range_elements = true;
+#ifdef __EMSCRIPTEN__
+	// WEBXR-PORT: framebuffer objects are core in WebGL2. Enabling them lets
+	// the water/refraction views render into FBOs (r_water_fbo 1, the
+	// default) instead of the glCopyTexSubImage2D fallback, which WebGL2
+	// rejects outright (RGB backbuffer -> RGBA texture is INVALID_OPERATION,
+	// so the copy path spams warnings and leaves the water textures black).
+	// arb_framebuffer_object selects the GLES2-aware branch in
+	// R_Mesh_CreateFramebufferObject. Shadowmapping stays off: the GLES2
+	// case in R_Shadow_SetShadowMode keeps stencil mode regardless.
+	vid.support.arb_framebuffer_object = true;
+	vid.support.ext_framebuffer_object = true;
+#else
 	vid.support.ext_framebuffer_object = false;
+#endif
 	vid.support.ext_packed_depth_stencil = false;
 	vid.support.ext_stencil_two_side = false;
 	vid.support.ext_texture_3d = SDL_GL_ExtensionSupported("GL_OES_texture_3D");
