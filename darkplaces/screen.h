@@ -70,6 +70,12 @@ extern cvar_t r_stereo_separation;
 extern cvar_t r_stereo_angle;
 qboolean R_Stereo_Active(void);
 extern int r_stereo_side;
+#ifdef __EMSCRIPTEN__
+/* WEBXR-PORT bug-2: unified projection-derived per-eye offset (con units)
+ * for 2D overlay elements in VR stereo — see gl_rmain.c */
+float VR_Stereo2DOffset(void);
+float VR_Stereo2DOffsetBase(void); /* eye-independent indent for left-anchored text */
+#endif
 
 typedef struct scr_touchscreenarea_s
 {

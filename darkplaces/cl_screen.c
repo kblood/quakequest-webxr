@@ -211,7 +211,14 @@ static void SCR_DrawCenterString (void)
 		int l = newline ? (newline - start) : (int)strlen(start);
 		float width = DrawQ_TextWidth(start, l, 8, 8, false, FONT_CENTERPRINT);
 
+#ifdef __EMSCRIPTEN__
+		/* WEBXR-PORT bug-2: projection-derived per-eye offset (uniform HUD
+		 * depth, compensates asymmetric HMD frusta) instead of hardcoded ±10;
+		 * also 0 in flatscreen, where the old code left +10 baked in */
+		x = (int) ((vid_conwidth.integer - width)/2 + VR_Stereo2DOffset());
+#else
 		x = (int) (vid_conwidth.integer - width)/2 + (r_stereo_side == 0 ? 10 : -10);
+#endif
 		if (l > 0)
 		{
 			if (remaining < l)

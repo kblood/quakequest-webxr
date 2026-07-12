@@ -245,6 +245,53 @@ value. Harness: `web-host/test/m4-trackingmode-test.mjs` (15 checks).
 Three bugs from real-Quest QA. Bug 1 (jump unbound) is documented in the
 M3 binding map above (Right A row + "canUseQuickSave" deviation note).
 
+### Bug 2: in-game message text doubles between the eyes (RESOLVED)
+
+Root cause: the fork drew every 2D overlay element with a different
+hardcoded per-eye x-offset — centerprint ±10 con units (cl_screen.c),
+status bar ±20 (sbar.c Sbar_GetXOffset), crosshair ±5/±12, and console
+notify lines (pickup/"You got..." messages — the text the QA report is
+about) with NO offset at all. Two problems: (a) zero/insufficient buffer
+disparity is NOT "at infinity" on a real HMD — the per-eye frusta are
+asymmetric (outward-canted, projection m[8] = P8 ≠ 0), so equal-NDC content
+is angularly DIVERGENT and cannot be fused (doubled text); (b) the elements
+that did have offsets sat at four different apparent depths.
+
+Fix: all four call sites now route through `VR_Stereo2DOffset()`
+(gl_rmain.c, `__EMSCRIPTEN__`-guarded, non-web builds unchanged), which
+derives one per-eye con-unit offset from the LIVE projection matrices the
+bridge caches each XR frame (`WebXRBridge_2DParallaxNDC`, webxr_bridge.c):
+
+    ndc_e = sign_e * P0 * IPD/(2*depth) - P8_e     (sign: +left, -right)
+    offset_con = ndc_e * vid_conwidth / 2
+
+- the `-P8` term cancels the frustum asymmetry (the on-device doubling);
+- the IPD term (0.065 m, same constant as GetStereoSeparation; the
+  vr_worldscale factor cancels between camera offset and target depth)
+  places all overlay text at ONE depth, set by the new `vr_hud_depth` cvar
+  (meters, default 1.5, CVAR_SAVE; 0 = disable all overlay offsets);
+- notify text additionally gets `VR_Stereo2DOffsetBase()` — an
+  eye-INDEPENDENT indent (adds no disparity) sized so the negative-offset
+  eye can't clip left-anchored text off the screen edge on strongly
+  asymmetric frusta;
+- flatscreen web builds now render centerprint truly centered (the fork
+  left its +10 left-eye offset baked in when not in VR).
+
+Measured (test/m4-hud-parallax-test.mjs, IWER Quest 3, eye buffer 400 px
+wide, black 3D view, cross-correlation of per-eye pixel-column profiles):
+- sym phase (IWER's symmetric frusta, P8=0): expected disparity at 1.5 m =
+  13.0 px; measured notify 13.0 / centerprint 13.0 / sbar 12.3 px (spread
+  0.7 px = single depth). At vr_hud_depth 0.75: expected 26.0; measured
+  26.0/26.0/26.1 (spread 0.1). vr_hud_depth 0: measured 0.0 px.
+- asym phase (XRView shim P8 = ∓0.15, emulating a real HMD's canted
+  frusta): expected 73.0 px; measured 73.0/73.0/72.3 (spread 0.7), and the
+  C-side cached projections demonstrably carry the asymmetry
+  (ndcL 0.1825 = 0.0325 IPD term + 0.15 P8 term). This is the exact
+  mechanism that was unfusable on the real headset, now compensated.
+
+Headset QA follow-up: confirm on-device fusion comfort and tune
+`vr_hud_depth` to taste (bigger = deeper/subtler, smaller = closer).
+
 ### Bug 3: exit VR bricked re-entry + pointer-lock Esc synth (RESOLVED)
 
 Root cause: the vendored library's session `'end'` listener opened with
@@ -437,6 +484,11 @@ pak preloaded to MEMFS at `/quake/id1/pak0.pak`).
     Android never appear).
 11. **gl_textures.c** (M4) — under `__EMSCRIPTEN__`, sized depth/stencil
     internal formats in the GLES2 textype table (WebGL2 requirement).
+12. **gl_rmain.c / screen.h / cl_screen.c / sbar.c / console.c** (headset QA
+    bug 2) — under `__EMSCRIPTEN__`, `vr_hud_depth` cvar +
+    `VR_Stereo2DOffset()/VR_Stereo2DOffsetBase()` replace the fork's
+    per-element hardcoded stereo offsets for centerprint/sbar/crosshair and
+    add the missing one for console notify (see "Headset QA round 1").
 
 Nothing else in the engine is modified. `snd_opensl.c` (Android OpenSL) is
 simply not compiled; `snd_sdl.c` + the standard snd stack replace it.

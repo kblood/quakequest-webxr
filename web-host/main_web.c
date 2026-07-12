@@ -301,6 +301,27 @@ void WebHost_PersistTick(void)
 		WebHost_PersistNow();
 }
 
+/* Console-command injection (test probe): lets the emulated harnesses drive
+ * engine state ("echo ...", "vr_hud_depth 2", ...) without faking keyboard
+ * input through the console UI (which would flip key_dest off the stereo
+ * in-game render path being measured). Used by m4-hud-parallax-test.mjs. */
+EMSCRIPTEN_KEEPALIVE
+void WebHost_Exec(const char *cmd)
+{
+	Cbuf_AddText(cmd);
+	Cbuf_AddText("\n");
+}
+
+/* Centerprint injection (test probe): no console command reaches
+ * SCR_CenterPrint (it is driven by svc_centerprint from QC), and the bug-2
+ * harness must measure centerprint stereo disparity specifically. Same
+ * channel a real trigger message uses. */
+EMSCRIPTEN_KEEPALIVE
+void WebHost_CenterPrint(const char *msg)
+{
+	SCR_CenterPrint(msg);
+}
+
 /* Flatscreen frame counter (test probe): proves the emscripten main loop is
  * actually pumping after an XR session ends (m4-session-cycle-test.mjs). */
 static int s_webFrameCount = 0;

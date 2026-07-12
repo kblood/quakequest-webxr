@@ -62,6 +62,43 @@ float GetStereoSeparation()
 //Define the stereo side we are drawing
 int r_stereo_side;
 
+#ifdef __EMSCRIPTEN__
+/* WEBXR-PORT bug-2 (headset QA 2026-07-12): the fork gave each 2D overlay
+ * element its own hardcoded per-eye offset (centerprint ±10, sbar ±20,
+ * crosshair ±5, console notify 0 = none), i.e. four different apparent
+ * depths, none compensating the headset's asymmetric per-eye frusta —
+ * on-device the text doubles between the eyes. All 2D overlay call sites
+ * now share this single projection-derived offset so everything fuses at
+ * one comfortable, cvar-tunable depth. Returns con-space units (the same
+ * space the ±10/±20 constants lived in); 0 in flat/2D-UI modes. */
+cvar_t vr_hud_depth = {CVAR_SAVE, "vr_hud_depth", "1.5", "apparent depth in meters of 2D overlay text/HUD (centerprint, messages, status bar, crosshair) in VR; 0 = legacy fixed offsets disabled entirely"};
+
+float WebXRBridge_2DParallaxNDC(int eye, float depthMeters); /* web-host/webxr_bridge.c */
+extern cvar_t vid_conwidth;
+
+float VR_Stereo2DOffset(void)
+{
+	if (VR_UseScreenLayer() || vr_hud_depth.value <= 0.0f)
+		return 0.0f;
+	return WebXRBridge_2DParallaxNDC(r_stereo_side, vr_hud_depth.value)
+	       * vid_conwidth.value * 0.5f;
+}
+
+/* Common (identical for BOTH eyes, so it adds margin without changing the
+ * stereo depth) base indent for left-anchored overlay text: on asymmetric
+ * frusta one eye's offset can be strongly negative, which would clip
+ * left-edge-anchored text (console notify) off the screen. */
+float VR_Stereo2DOffsetBase(void)
+{
+	if (VR_UseScreenLayer() || vr_hud_depth.value <= 0.0f)
+		return 0.0f;
+	float offL = WebXRBridge_2DParallaxNDC(0, vr_hud_depth.value) * vid_conwidth.value * 0.5f;
+	float offR = WebXRBridge_2DParallaxNDC(1, vr_hud_depth.value) * vid_conwidth.value * 0.5f;
+	float m = offL < offR ? offL : offR;
+	return (m < 0.0f ? -m : 0.0f) + 8.0f;
+}
+#endif
+
 //
 // screen size info
 //
@@ -4245,6 +4282,9 @@ void GL_Main_Init(void)
 		Cvar_RegisterVariable (&gl_skyclip);
 	}
 	Cvar_RegisterVariable(&vr_worldscale);
+#ifdef __EMSCRIPTEN__
+	Cvar_RegisterVariable(&vr_hud_depth); /* WEBXR-PORT bug-2: unified 2D overlay depth */
+#endif
 	Cvar_RegisterVariable(&r_motionblur);
 	Cvar_RegisterVariable(&r_damageblur);
 	Cvar_RegisterVariable(&r_motionblur_averaging);

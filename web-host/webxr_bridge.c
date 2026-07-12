@@ -408,6 +408,41 @@ float WebXRBridge_GetFOV(void)
     return 2.0f * atanf(tanHalf) * (180.0f / (float)M_PI);
 }
 
+/* WEBXR-PORT bug-2 (headset QA 2026-07-12): horizontal NDC shift that makes
+ * a 2D overlay element drawn into eye 'eye' appear at depthMeters.
+ *
+ * Derivation: a world point centered between the eyes at distance D projects
+ * in eye e (camera displaced laterally by ipd/2) to
+ *     ndc_x = sign_e * P0 * ipd/(2D) - P8      (sign: +left eye, -right eye)
+ * with P0 = proj[0] (column-major m00) and P8 = proj[8] (m02, the frustum
+ * asymmetry term). A 2D element drawn at the SAME ndc in both eyes has zero
+ * buffer disparity — which on a real HMD is NOT "at infinity": the per-eye
+ * asymmetric (outward-canted) frusta mean equal ndc = divergent view rays,
+ * unfusable text (the QA "message text doubles between eyes" report; the
+ * fork's hardcoded ±10/±20/±5 con-unit offsets never compensated P8 and
+ * disagreed with each other in depth). Shifting each eye's overlay by this
+ * value reproduces the projection of a real point at D.
+ *
+ * Units: the 0.065 m IPD matches the engine's own GetStereoSeparation()
+ * (vr_worldscale * 0.065); since the render camera offset AND the target
+ * depth both scale by vr_worldscale, the scale cancels and physical meters
+ * can be used directly against the unitless projection terms.
+ *
+ * EMSCRIPTEN_KEEPALIVE so the emulated harness
+ * (test/m4-hud-parallax-test.mjs) can compute the expected disparity from
+ * the exact projections IWER hands us. */
+EMSCRIPTEN_KEEPALIVE
+float WebXRBridge_2DParallaxNDC(int eye, float depthMeters)
+{
+    if (!s_sessionActive || !s_frameDataValid || eye < 0 || eye >= WEBXR_EYES)
+        return 0.0f;
+    if (depthMeters < 0.25f)
+        depthMeters = 0.25f; /* clamp: closer than 25 cm is painful and the offset explodes */
+    const float *p = s_eyeProjection[eye];
+    float sign = (eye == 0) ? 1.0f : -1.0f;
+    return sign * p[0] * 0.065f / (2.0f * depthMeters) - p[8];
+}
+
 /* =====================================================================
  * Session lifecycle + XR frame pump
  * ===================================================================== */

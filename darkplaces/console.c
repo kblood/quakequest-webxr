@@ -1725,7 +1725,23 @@ void Con_DrawNotify (void)
 		chatstart = 0; // shut off gcc warning
 	}
 
-	v = notifystart + con_notifysize.value * Con_DrawNotifyRect(0, CON_MASK_INPUT | CON_MASK_HIDENOTIFY | (numChatlines ? CON_MASK_CHAT : 0) | CON_MASK_DEVELOPER, con_notifytime.value, 0, notifystart, vid_conwidth.value, con_notify.value * con_notifysize.value, con_notifysize.value, align, 0.0, "");
+	{
+		float notifyx = 0;
+#ifdef __EMSCRIPTEN__
+		/* WEBXR-PORT bug-2: in-game notify/pickup messages were drawn with
+		 * NO per-eye offset at all — zero buffer disparity is divergent and
+		 * unfusable through the HMD's asymmetric frusta (the headset-QA
+		 * "message text doubles between eyes" report). Use the same
+		 * projection-derived overlay depth as centerprint/sbar/crosshair,
+		 * plus an eye-independent base indent (same for both eyes = no
+		 * depth change) sized so the negative-offset eye can't clip the
+		 * text off the screen edge even on strongly asymmetric frusta. */
+		float off = VR_Stereo2DOffset();
+		if (off != 0.0f)
+			notifyx = VR_Stereo2DOffsetBase() + off;
+#endif
+		v = notifystart + con_notifysize.value * Con_DrawNotifyRect(0, CON_MASK_INPUT | CON_MASK_HIDENOTIFY | (numChatlines ? CON_MASK_CHAT : 0) | CON_MASK_DEVELOPER, con_notifytime.value, notifyx, notifystart, vid_conwidth.value, con_notify.value * con_notifysize.value, con_notifysize.value, align, 0.0, "");
+	}
 
 	if(con_chatrect.integer)
 	{

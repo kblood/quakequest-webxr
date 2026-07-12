@@ -141,8 +141,17 @@ int Sbar_GetXOffset()
 	if (VR_UseScreenLayer())
 		return 0;
 
+#ifdef __EMSCRIPTEN__
+	/* WEBXR-PORT bug-2: projection-derived per-eye offset (uniform HUD
+	 * depth shared with centerprint/notify/crosshair) instead of the
+	 * hardcoded ±20, which put the sbar at a different depth than every
+	 * other overlay and ignored the HMD's asymmetric frusta */
+	float off = VR_Stereo2DOffset();
+	return (int)(off < 0.0f ? off - 0.5f : off + 0.5f);
+#else
 	//This will give the status bar depth in the 3D space
 	return (r_stereo_side ? -20 : 20);
+#endif
 }
 
 /*
@@ -1748,7 +1757,13 @@ void Sbar_Draw (void)
 		pic = Draw_CachePic (va(vabuf, sizeof(vabuf), "gfx/crosshair%i", crosshair.integer));
 		int stereoOffset = vr_worldscale.value > 200.0f ? 12 : 5;
 		int yOffset = (vr_worldscale.value > 200.0f ? 20 : 5);
-		DrawQ_Pic((vid_conwidth.integer - pic->width * crosshair_size.value) * 0.5f + (r_stereo_side ? -stereoOffset : stereoOffset),
+		float stereoXOff = (r_stereo_side ? -stereoOffset : stereoOffset);
+#ifdef __EMSCRIPTEN__
+		/* WEBXR-PORT bug-2: same projection-derived overlay depth as the
+		 * rest of the 2D HUD instead of the hardcoded ±5/±12 */
+		stereoXOff = VR_Stereo2DOffset();
+#endif
+		DrawQ_Pic((vid_conwidth.integer - pic->width * crosshair_size.value) * 0.5f + stereoXOff,
 				  (vid_conheight.integer - pic->height * crosshair_size.value) * 0.5f + yOffset,
 				  pic, pic->width * crosshair_size.value, pic->height * crosshair_size.value,
 				  crosshair_color_red.value, crosshair_color_green.value, crosshair_color_blue.value, crosshair_color_alpha.value, 0);
