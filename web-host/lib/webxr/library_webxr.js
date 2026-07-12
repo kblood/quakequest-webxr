@@ -126,7 +126,11 @@ webxr_init: function(frameCallback, startSessionCallback, endSessionCallback, er
         /* Request next frame */
         const session = frame.session;
         /* RAF is set to null on session end to avoid rendering */
-        if(Module['webxr_session'] != null) session.requestAnimationFrame(onFrame);
+        /* WEBXR-PORT PATCH #15: guard the re-arm — on UAs with original-spec
+         * semantics a late frame delivered around end() would throw here. */
+        if(Module['webxr_session'] != null) {
+            try { session.requestAnimationFrame(onFrame); } catch (e) { /* session ended */ }
+        }
 
         const pose = frame.getViewerPose(WebXR.refSpaces[WebXR.refSpace]);
         if(!pose) return;
@@ -177,17 +181,33 @@ webxr_init: function(frameCallback, startSessionCallback, endSessionCallback, er
         Module['webxr_session'] = session;
 
         // React to session ending
+        /* WEBXR-PORT PATCH #15: exception-proof teardown. Upstream's first
+         * statement here called cancelAnimationFrame on the ALREADY-ENDED
+         * session — the original WebXR spec (and UAs that kept that
+         * behavior) throws InvalidStateError for rAF ops on ended sessions,
+         * which killed this whole listener before the C end-callback ran.
+         * The C side then believed the session was active forever: re-entry
+         * blocked (RequestSession early-returns) and flat-mode input
+         * fallbacks suppressed (headset QA bug 3). The call was also a
+         * no-op — WebXR._curRAF is never assigned anywhere. Every cleanup
+         * step is now individually guarded so onSessionEnd ALWAYS reaches
+         * the C side. */
         session.addEventListener('end', function() {
-            Module['webxr_session'].cancelAnimationFrame(WebXR._curRAF);
+            try {
+                if (WebXR._curRAF != null && Module['webxr_session'])
+                    Module['webxr_session'].cancelAnimationFrame(WebXR._curRAF);
+            } catch (e) { /* ended sessions may reject rAF ops — harmless */ }
             WebXR._curRAF = null;
             Module['webxr_session'] = null;
             /* WEBXR-PORT PATCH #3: drop the stale GL.framebuffers entry for
              * the layer framebuffer so a later re-enter can't alias it
              * (design doc risk #10). */
-            if (Module.webxr_fbo != null) {
-                GL.framebuffers[Module.webxr_fbo] = null;
-                Module.webxr_fbo = null;
-            }
+            try {
+                if (Module.webxr_fbo != null) {
+                    GL.framebuffers[Module.webxr_fbo] = null;
+                    Module.webxr_fbo = null;
+                }
+            } catch (e) { console.warn('[webxr] end cleanup:', e); }
             onSessionEnd(mode);
         });
 
@@ -302,7 +322,15 @@ webxr_request_session: function(mode, requiredFeatures, optionalFeatures) {
 
 webxr_request_exit: function() {
     var s = Module['webxr_session'];
-    if(s) Module['webxr_session'].end();
+    /* WEBXR-PORT PATCH #15: end() on an already-ended session returns a
+     * rejected promise (or throws synchronously on some UAs) — swallow it,
+     * the 'end' listener has already done / will do the teardown. */
+    if(s) {
+        try {
+            var p = s.end();
+            if (p && p.catch) p.catch(function() {});
+        } catch (e) { /* already ended */ }
+    }
 },
 
 webxr_set_projection_params: function(near, far) {

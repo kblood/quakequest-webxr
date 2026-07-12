@@ -73,6 +73,7 @@ static bool  s_needResolution = false; /* first-XR-frame QC_SetResolution pendin
 static float s_eyeProjection[WEBXR_EYES][16];
 static int   s_eyeViewport[WEBXR_EYES][4]; /* x, y, w, h */
 static int   s_badViewCountLogged = 0;
+static double s_lastXRFrameMs = 0.0;   /* emscripten_get_now() of last OnXRFrame (bug-3 self-heal) */
 
 /* depth params pushed to the XR session (baked into XRView.projectionMatrix).
  * Engine units (Quake units), NOT meters — the matrix math is unitless and
@@ -112,6 +113,20 @@ EM_JS(void, webxr_js_bind_canvas, (void), {
 EM_JS(void, webxr_js_notify_state, (int active), {
     if (typeof window !== 'undefined' && window.onQuakeXRState)
         window.onQuakeXRState(!!active);
+});
+
+/* WEBXR-PORT bug-3 self-heal: JS-side truth about the session object.
+ * library_webxr.js nulls Module['webxr_session'] in its 'end' listener;
+ * if that ran but the C end-callback somehow didn't (an exception in the
+ * teardown chain), the C flag is stale and must be reconciled. */
+EM_JS(int, webxr_js_session_exists, (void), {
+    return (typeof Module !== 'undefined' && Module['webxr_session']) ? 1 : 0;
+});
+
+/* WEBXR-PORT bug-3 self-heal: drop a stale (ended but never cleaned-up) JS
+ * session reference so a fresh request starts from consistent state. */
+EM_JS(void, webxr_js_drop_session, (void), {
+    if (typeof Module !== 'undefined') Module['webxr_session'] = null;
 });
 
 /* =====================================================================
@@ -338,8 +353,30 @@ void VR_SetHMDPosition(float x, float y, float z)
  * Public queries
  * ===================================================================== */
 
+static void WebXRBridge_OnSessionEnd(void *userData, int mode); /* fwd (self-heal below) */
+
+/* EMSCRIPTEN_KEEPALIVE so the session-lifecycle harness
+ * (test/m4-session-cycle-test.mjs) can assert the C-side flag directly —
+ * a stale true here is exactly the bug-3 failure mode (blocks re-enter AND
+ * suppresses the pointer-lock-exit Esc synthesis). */
+EMSCRIPTEN_KEEPALIVE
 bool WebXRBridge_IsSessionActive(void)
 {
+    /* WEBXR-PORT bug-3 self-heal: if the JS session object is gone but our
+     * end callback never ran (an exception mid-teardown on the UA side —
+     * see library_webxr.js PATCH #15 — or any future teardown fault), the
+     * stale flag would permanently block re-entry AND suppress the
+     * pointer-lock Esc fallback. Cross-check against JS truth and force the
+     * end teardown ourselves. Skipped inside the XR frame pump, where the
+     * session trivially exists and this query is hot. */
+    static bool healing = false;
+    if (s_sessionActive && !s_inXRFrame && !healing && !webxr_js_session_exists())
+    {
+        healing = true;
+        printf("[webxr] stale session-active flag (JS session gone) — forcing end teardown\n");
+        WebXRBridge_OnSessionEnd(NULL, -1);
+        healing = false;
+    }
     return s_sessionActive;
 }
 
@@ -406,15 +443,22 @@ static void WebXRBridge_OnSessionEnd(void *userData, int mode)
      * flatscreen or the next session */
     WebXRInput_Reset();
 
-    /* back to the canvas backbuffer + flatscreen render size */
+    /* back to the canvas backbuffer */
     webxr_js_bind_canvas();
+
+    /* WEBXR-PORT bug-3 hardening: resume the flatscreen loop and tell the
+     * page FIRST — the canvas-size restore below runs a full VID_Restart
+     * (GL-heavy, the riskiest teardown step); if anything in it ever throws,
+     * the app must already be back in a self-consistent flat state instead
+     * of a paused loop with a stale page button. */
+    emscripten_resume_main_loop();
+    webxr_js_notify_state(0);
+
+    /* flatscreen render size */
     int w = 0, h = 0;
     emscripten_get_canvas_element_size("#canvas", &w, &h);
     if (w > 0 && h > 0 && (w != andrw || h != andrh))
         QC_SetResolution(w, h);
-
-    emscripten_resume_main_loop();
-    webxr_js_notify_state(0);
 }
 
 static void WebXRBridge_OnError(void *userData, int error)
@@ -435,6 +479,8 @@ static void WebXRBridge_OnXRFrame(void *userData, int timeMs,
 
     if (!s_sessionActive)
         return;
+
+    s_lastXRFrameMs = emscripten_get_now(); /* bug-3 self-heal: session demonstrably alive */
 
     /* Eye count is hard-pinned to 2 for M2 (ovrMaxNumEyes is a compile-time
      * 2 throughout the engine's calling code — design doc §3). */
@@ -561,7 +607,23 @@ EMSCRIPTEN_KEEPALIVE
 void WebXRBridge_RequestSession(void)
 {
     if (s_sessionActive)
-        return;
+    {
+        /* WEBXR-PORT bug-3 self-heal: a click on the 2D page can only happen
+         * when no immersive session is really presenting (immersive-vr owns
+         * the display). If the flag still says active, the previous teardown
+         * chain died mid-way (bug 3): JS session object gone, or a session
+         * object that stopped delivering frames. Force the end teardown and
+         * continue with the fresh request instead of bricking re-entry. */
+        double sinceFrame = emscripten_get_now() - s_lastXRFrameMs;
+        bool jsGone = !webxr_js_session_exists();
+        bool frameStale = (s_lastXRFrameMs <= 0.0) || sinceFrame > 2000.0;
+        if (!jsGone && !frameStale)
+            return; /* genuinely active */
+        printf("[webxr] stale session state on request (jsSession=%d, lastFrame %.0f ms ago) — forcing teardown\n",
+               !jsGone, sinceFrame);
+        webxr_js_drop_session();
+        WebXRBridge_OnSessionEnd(NULL, -1);
+    }
     printf("[webxr] requesting immersive-vr session\n");
     /* local-floor required (the fork's height model builds on a floor-level
      * origin: playerHeight/vieworg[2], view.c:929); bounded-floor optional */

@@ -142,6 +142,41 @@ and the `vr_recenter` console command). Must run inside the frame callback
 malformed/zero quaternion (a headset reporting a degenerate pose) falls back
 to a no-op (returns 0) instead of throwing out of the frame callback.
 
+## #15 — exception-proof session teardown (library_webxr.js) [bug 3]
+
+Upstream's session `'end'` listener began with
+`Module['webxr_session'].cancelAnimationFrame(WebXR._curRAF)` — a call on the
+*already-ended* session. The original WebXR spec made `requestAnimationFrame`
+/`cancelAnimationFrame` throw `InvalidStateError` on ended sessions (later
+relaxed to a no-op, which is what current Chromium and IWER implement), so on
+any UA with the original semantics the listener died on its first statement:
+`Module['webxr_session']` was never nulled and — critically — the C
+`onSessionEnd` callback never ran. The C side then believed the session was
+active forever: `WebXRBridge_RequestSession` early-returned (VR could never
+be re-entered) and every `!WebXRBridge_IsSessionActive()` guard (e.g. the
+pointer-lock-exit → Esc menu synthesis in `main_web.c`) stayed suppressed —
+exactly headset-QA bug 3. The call was also a plain bug even on lenient UAs:
+`WebXR._curRAF` is initialised to `null` and never assigned anywhere, so it
+cancelled nothing. Changes:
+
+- `'end'` listener: `cancelAnimationFrame` only attempted when a handle
+  exists, wrapped in try/catch; the PATCH #3 fbo cleanup wrapped in its own
+  try/catch; `onSessionEnd(mode)` therefore always reaches the C side.
+- `onFrame`'s rAF re-arm wrapped in try/catch (a late frame delivered around
+  `end()` would throw on original-spec UAs).
+- `webxr_request_exit`: `end()` on an already-ended session returns a
+  rejected promise (or throws synchronously on some UAs) — both swallowed.
+
+Belt-and-braces on the C side (webxr_bridge.c, not part of this file but the
+same fix): `WebXRBridge_IsSessionActive()` reconciles a stale `true` flag
+against `Module['webxr_session']` and forces the end teardown if the JS
+session is gone; `WebXRBridge_RequestSession()` additionally treats a
+session that stopped delivering XR frames >2 s ago as dead (a click on the
+2D page can't happen while a healthy immersive session is presenting) and
+force-cleans before requesting the new session. Regression-covered by
+`test/m4-session-cycle-test.mjs` mode `endquirk`, which shims IWER's
+XRSession to the original-spec throwing behavior.
+
 **Known emulation-only limitation (does not affect real headsets):** IWER
 2.3.0's `XRReferenceSpace.getOffsetReferenceSpace` deviates from the WebXR
 spec — its own type declaration (`iwer/lib/spaces/XRReferenceSpace.d.ts:26`,

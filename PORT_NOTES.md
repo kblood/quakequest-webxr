@@ -240,6 +240,46 @@ runtime only; `IN_Weapon_SaveConfigPreservingTrackingMode()` swaps the
 preference in around Host_SaveConfig so config.cfg never records the forced
 value. Harness: `web-host/test/m4-trackingmode-test.mjs` (15 checks).
 
+## Headset QA round 1 (2026-07-12) — bug fixes
+
+Three bugs from real-Quest QA. Bug 1 (jump unbound) is documented in the
+M3 binding map above (Right A row + "canUseQuickSave" deviation note).
+
+### Bug 3: exit VR bricked re-entry + pointer-lock Esc synth (RESOLVED)
+
+Root cause: the vendored library's session `'end'` listener opened with
+`Module['webxr_session'].cancelAnimationFrame(WebXR._curRAF)` — an rAF call
+on the *already-ended* session. Original-spec WebXR UAs throw
+`InvalidStateError` there (current Chromium/IWER made it a no-op, which is
+why plain emulation didn't reproduce it), so the listener died before the C
+`onSessionEnd` ever ran: `s_sessionActive` stuck true → `RequestSession`
+early-returns forever (no re-entry) and every `!WebXRBridge_IsSessionActive()`
+guard stays suppressed (the pointer-lock-exit → Esc menu synthesis dies) —
+both QA symptoms from one stuck flag. Fix layers:
+
+- **PATCH #15** (`lib/webxr/library_webxr.js`, see PATCHES.md): every step of
+  the `'end'` listener individually guarded so `onSessionEnd` ALWAYS reaches
+  C; `onFrame` rAF re-arm and `webxr_request_exit`'s `end()` also guarded.
+- **webxr_bridge.c teardown reorder**: `OnSessionEnd` resumes the main loop
+  and notifies the page BEFORE the GL-heavy `QC_SetResolution`/VID_Restart,
+  so a fault there can't leave a paused loop + stale button.
+- **Self-heal**: `WebXRBridge_IsSessionActive()` reconciles a stale true flag
+  against JS truth (`Module['webxr_session']` gone → force end teardown);
+  `WebXRBridge_RequestSession()` on a "still active" click also treats >2 s
+  without an XR frame as a dead session (a 2D-page click can't happen while
+  a healthy immersive session presents), force-cleans, and proceeds.
+- **web/index.html**: Enter/Exit button now consults C-side truth
+  (`_WebXRBridge_IsSessionActive`) instead of the page's `xrActive` mirror,
+  and no longer crashes if clicked before the wasm runtime is ready.
+
+Regression harness: `web-host/test/m4-session-cycle-test.mjs` — full
+enter→exit→re-enter→exit cycle (C flag, page notification, flatscreen loop
+resumption via new `WebHost_FrameCount` export, pointer-lock Esc synth, both
+eyes lit and stereo-distinct on every entry) in three UA flavors: plain IWER
+(`canvas`), IWER + real layer framebuffer shim (`layerfb`, device-like), and
+IWER + original-spec throwing rAF shim (`endquirk`, reproduces this bug —
+hung at exit#1 pre-fix, 72/72 checks green post-fix, 0 console errors).
+
 ## M2 architecture (see reports/05-webxr-bridge-design.md — implemented as designed)
 
 - `web-host/lib/webxr/` — vendored emscripten-webxr @1bc0b7b with **11

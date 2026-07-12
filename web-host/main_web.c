@@ -301,8 +301,19 @@ void WebHost_PersistTick(void)
 		WebHost_PersistNow();
 }
 
+/* Flatscreen frame counter (test probe): proves the emscripten main loop is
+ * actually pumping after an XR session ends (m4-session-cycle-test.mjs). */
+static int s_webFrameCount = 0;
+
+EMSCRIPTEN_KEEPALIVE
+int WebHost_FrameCount(void)
+{
+	return s_webFrameCount;
+}
+
 static void web_frame(void)
 {
+	s_webFrameCount++;
 	WebHost_PersistTick();
 
 	/* WEBXR-PORT M4: pick up user changes to cl_trackingmode (console/menu)
