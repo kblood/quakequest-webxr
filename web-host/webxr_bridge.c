@@ -37,7 +37,6 @@
 #include "lib/webxr/webxr.h"
 #include "webxr_bridge.h"
 #include "webxr_input.h"   /* M3 foundation: controller snapshot + haptics */
-<<<<<<< HEAD
 #include "in_weapon.h"     /* WEBXR-PORT M3-weapon: IN_Weapon_AimActive */
 #include "in_menu.h"       /* WEBXR-PORT M3-hud: menu toggle + nav keys */
 #include "vr_menu_quad.h"  /* WEBXR-PORT M3-hud: world-anchored 2D-UI quad */
@@ -483,7 +482,7 @@ static void WebXRBridge_OnXRFrame(void *userData, int timeMs,
      * so gameplay code (the four M3 chunks) sees this frame's state. */
     WebXRInput_Update(emscripten_get_now());
 
-IN_Menu_HandleInput(); /* WEBXR-PORT M3-hud: menu toggle + big-screen d-pad nav */
+    IN_Menu_HandleInput(); /* WEBXR-PORT M3-hud: menu toggle + big-screen d-pad nav */
 
     /* WEBXR-PORT M3-hud: engine in 2D-UI mode (menu/console/loading/demo) ->
      * render flat into the UI FBO and draw a world-anchored quad per eye
@@ -494,26 +493,18 @@ IN_Menu_HandleInput(); /* WEBXR-PORT M3-hud: menu toggle + big-screen d-pad nav 
      * dispatched from WebXRInput_Update above). Head aim (M2 behavior) stays
      * as the fallback for frames with no located controller aim pose — the
      * fork sends gunangles, not viewangles, to the server (cl_input.c:1845). */
+    /* WEBXR-PORT M3-comfort: recenter/quicksave/bullet-time — needs this
+     * frame's fresh button state (just updated above) and must run before
+     * QC_BeginFrame so its console commands (Cbuf_InsertText) and cvar
+     * writes land this frame (see in_comfort.h). */
+    WebXRComfort_Update();
+
     if (!IN_Weapon_AimActive())
     {
         gunangles[0] = hmdorientation[0];
         gunangles[1] = hmdorientation[1];
         gunangles[2] = 0.0f;
     }
-=======
-    /* WEBXR-PORT M3-comfort: recenter/laser-sight/weapon-switch/quicksave/
-     * bullet-time — needs this frame's fresh button state (just updated
-     * above) and must run before QC_BeginFrame so its console commands
-     * (Cbuf_InsertText) and cvar writes land this frame (see in_comfort.h). */
-    WebXRComfort_Update();
-
-    /* M2 aims with the head (controller-driven gunangles land with M3
-     * chunk 2): the fork sends gunangles, not viewangles, to the server as
-     * aim (cl_input.c:1845). */
-    gunangles[0] = hmdorientation[0];
-    gunangles[1] = hmdorientation[1];
-    gunangles[2] = 0.0f;
->>>>>>> m3-comfort
 
     /* the same pump AppThreadFunction ran (QuakeQuest_OpenXR.c:276-310),
      * minus OpenXR swapchain calls (WebXR submit is implicit on return) */
