@@ -1,6 +1,116 @@
-# PORT_NOTES — M1 (flatscreen) + M2 (WebXR stereo)
+# PORT_NOTES — M1 (flatscreen) + M2 (WebXR stereo) + M3 foundation (input)
 
-State as of 2026-07-12: **M1 + M2 complete (pending real-headset confirm).**
+State as of 2026-07-12: **M1 + M2 complete (pending real-headset confirm);
+M3 input foundation in place** (controller poses/buttons/axes/haptics flow
+JS→C each XR frame, verified emulated). The four M3 gameplay chunks
+(reports/06 §5) build on the contract below.
+
+## M3 foundation — WebXR controller input (the chunk agents' contract)
+
+Files: `web-host/webxr_input.h` (READ THIS FIRST — full contract in its
+header comment), `web-host/webxr_input.c`, vendored-library PATCH #12/#13
+(`web-host/lib/webxr/`). Everything updates once per XR frame from
+`webxr_bridge.c`'s OnXRFrame (before `QC_BeginFrame`, inside the frame
+callback); outside a session all state reads zero/inactive.
+
+### Two views of the same per-frame data
+
+1. **Raw** — `WebXRControllerState webxr_controllers[2]` (index 0=left,
+   1=right; struct in `lib/webxr/webxr.h`): presence flag, grip pose AND
+   targetRay/aim pose (position[3] + orientation quat[4], XR reference-space
+   meters, x right / y up / z back), xr-standard gamepad
+   `buttons[8]{pressed,touched,value}` + `axes[4]`, `gamepadConnected` /
+   `hasHaptic` / `buttonCount` / `axisCount`. Nothing interpreted — note
+   axes[3] (thumbstick y) is **+y = down** here, per Gamepad convention.
+
+2. **TBXR-compatible** — the exact globals/names/shapes
+   `HandleInput_Default()` consumed on Android, so its logic ports with
+   minimal rewording:
+   ```c
+   WebXRRemoteState leftTrackedRemoteState_new,  leftTrackedRemoteState_old;
+   WebXRRemoteState rightTrackedRemoteState_new, rightTrackedRemoteState_old;
+   WebXRTrackedController leftRemoteTracking_new, rightRemoteTracking_new;
+   ```
+   - `WebXRRemoteState` == `ovrInputStateTrackedRemote`: `.Buttons`/`.Touches`
+     (same `xrButton_*` bitmask values as TBXR_Common.h, defined in
+     webxr_input.h), `.IndexTrigger`/`.GripTrigger` analog 0..1 (bit set at
+     the fork's >0.5 threshold), `.Joystick.x/.y` in **OpenXR sign convention
+     (+y = pushed forward)** — the xr-standard sign flip already happened,
+     do NOT flip again.
+   - `WebXRTrackedController` == `ovrTrackedController`: `.Active`,
+     `.Pose.position/.orientation` = the **aim pose** (the fork tracked via
+     OpenXR aim space; grip is only in the raw view),
+     `.Velocity.linearVelocity` in m/s **derived from aim-position deltas**
+     (WebXR has no XrSpaceVelocity).
+   - The foundation writes `*_new` only. Gameplay code copies new→old at the
+     end of its per-hand blocks, exactly as the fork did.
+
+### Quest Touch xr-standard mapping (implemented; re-verify on real headset)
+
+| gamepad index | input | compat bit |
+|---|---|---|
+| buttons[0] | trigger (analog) | `xrButton_Trigger` (>0.5) |
+| buttons[1] | squeeze (analog) | `xrButton_GripTrigger` (>0.5) |
+| buttons[3] | thumbstick click | `xrButton_LThumb`/`RThumb` **and** `xrButton_Joystick` |
+| buttons[4] | X (left) / A (right) | `xrButton_X`/`xrButton_A` |
+| buttons[5] | Y (left) / B (right) | `xrButton_Y`/`xrButton_B` |
+| buttons[6] | thumbrest (touch) | `xrButton_ThumbRest` (Touches only) |
+| axes[2,3] | thumbstick x,y | `.Joystick` (y sign-flipped) |
+
+**`xrButton_Enter` (Quest Menu button) is NEVER set** — browsers reserve it.
+Chunk 3 must rebind the menu toggle (reports/06 §1.4 gap).
+
+### Haptics
+
+- `WebXRInput_Vibrate(durationMs, channelMask, intensity)` — drop-in
+  `TBXR_Vibrate` replacement (same signature/semantics: mask 1=left 2=right
+  3=both; busy channel rejects the request; -1 = continuous until a
+  duration-0 call). Chunk 2's ported `VR_HapticEvent` per-weapon table calls
+  this unchanged. Channels tick inside `WebXRInput_Update`.
+- `WebXRInput_HapticPulse(hand, intensity, durationMs)` — raw single pulse.
+- Both are safe no-ops without an actuator; both are EMSCRIPTEN_KEEPALIVE
+  (callable from JS/tests as `Module._WebXRInput_Vibrate(...)`).
+
+### Helpers
+
+- `WebXRInput_GetHMDPositionDelta(out[3])` — the fork's
+  `positionDeltaThisFrame` (chunk 1 positional locomotion, chunk 4
+  bullet-time). Raw XR axes, meters.
+- `WebXRBridge_QuatToYawPitchRoll(q, rotAdjust, out)` (webxr_bridge.h) —
+  already ported in M2; chunk 2 uses it for gunangles.
+
+### Debug: `vr_inputdebug` / `?inputdebug=1`
+
+Live input-state dump, ON: `vr_inputdebug 1` in the console, or
+`?inputdebug=1` URL param. Two sinks:
+- DOM overlay `#qq-inputdebug` (5 Hz) — what the emulated tests assert on
+  (the text is formatted in C **from the C-side structs**, so a match proves
+  JS→C marshaling);
+- `Con_Printf` at 1 Hz — notify lines render in-game per eye, **visible
+  inside the headset** for on-device binding diagnosis.
+Format per hand: grip/aim positions (`!` = pose not located), aim quat,
+derived velocity, compat `btn=`/`tch=` bitmasks + analog triggers + mapped
+stick, then raw gamepad (`P`=pressed `t`=touched + value per button, raw
+axes).
+
+### M3-foundation verification (2026-07-12, emulated)
+
+`web-host/test/m3-input-test.mjs` (IWER v2.3.0 metaQuest3, headless Chrome —
+same harness pattern as M2; reusable by the chunk agents). 24/24 checks OK,
+0 console errors: both hands present with valid grip+aim poses; driven
+buttons/axes arrive on the C side with correct bits/values (trigger bit+
+analog, grip, A/B/X touch+press, thumbstick click setting both thumb bits,
+stick x, stick y sign-flip); driven controller positions arrive in the aim
+pose; haptic pulse accepted by the emulated actuator; busy-channel rejection;
+state clears on button release and resets on session exit; flatscreen
+regression OK (webxr-test, 0 errors, crossOriginIsolated=true). Screenshots:
+`web/screenshots/m3-input-emulated.png` (stereo + overlay + in-game notify
+dump), `m3-flatscreen-regression.png`.
+
+Not verifiable emulated (M3 headset checklist): real Quest Touch button
+indices/thumbrest, actual rumble feel, `targetRayMode`
+differences, hand-tracking input sources (foundation matches by handedness
+and ignores non-controller sources' missing gamepads gracefully).
 Engine links, boots shareware Quake flatscreen at 1280x720; entering VR starts
 an immersive-vr session, pauses the flatscreen loop, and renders head-tracked
 per-eye stereo into the XRWebGLLayer framebuffer. Config/saves persist via

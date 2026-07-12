@@ -164,8 +164,11 @@ void WebXRInput_Update(double nowMs)
     WebXRInput_DebugTick(nowMs);
 }
 
+static void WebXRInput_OverlaySessionEnded(void); /* below (needs EM_JS) */
+
 void WebXRInput_Reset(void)
 {
+    WebXRInput_OverlaySessionEnded();
     memset(webxr_controllers, 0, sizeof(webxr_controllers));
     memset(&leftTrackedRemoteState_new,  0, sizeof(leftTrackedRemoteState_new));
     memset(&leftTrackedRemoteState_old,  0, sizeof(leftTrackedRemoteState_old));
@@ -194,11 +197,13 @@ void WebXRInput_GetHMDPositionDelta(float out[3])
 static float s_vibDurationMs[WEBXR_HAND_COUNT]; /* >0 running, -1 continuous, 0 idle */
 static float s_vibIntensity[WEBXR_HAND_COUNT];
 
+EMSCRIPTEN_KEEPALIVE
 bool WebXRInput_HapticPulse(int hand, float intensity, int durationMs)
 {
     return webxr_haptic_pulse(hand, intensity, durationMs) != 0;
 }
 
+EMSCRIPTEN_KEEPALIVE
 void WebXRInput_Vibrate(int durationMs, int channelMask, float intensity)
 {
     for (int i = 0; i < WEBXR_HAND_COUNT; ++i)
@@ -354,6 +359,13 @@ static void WebXRInput_DebugTick(double nowMs)
         WebXRInput_FormatState(buf, sizeof(buf));
         Con_Printf("%s", buf);
     }
+}
+
+static void WebXRInput_OverlaySessionEnded(void)
+{
+    if (s_debug)
+        webxr_js_inputdebug_overlay("-- vr input (session=0) --\n"
+                                    "(state reset; controller updates resume in VR)");
 }
 
 void WebXRInput_SetDebug(int enabled)
