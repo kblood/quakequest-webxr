@@ -224,7 +224,21 @@ static EM_BOOL on_wheel(int type, const EmscriptenWheelEvent *e, void *ud)
 static EM_BOOL on_pointerlockchange(int type, const EmscriptenPointerlockChangeEvent *e, void *ud)
 {
 	(void)type; (void)ud;
+	bool was = s_pointerlocked;
 	s_pointerlocked = e->isActive;
+
+	/* WEBXR-PORT: while pointer-locked the browser reserves Esc for the
+	 * unlock itself — the keydown never reaches the page, so in-game Esc
+	 * appeared to "only release the mouse". Treat losing the lock during
+	 * gameplay as the Esc it was: open the menu (pause), matching native
+	 * Quake. Guarded to gameplay only so menu/console navigation and XR
+	 * sessions (no pointer lock) are unaffected. */
+	if (was && !e->isActive && cls.state != ca_disconnected
+	    && key_dest == key_game && !WebXRBridge_IsSessionActive())
+	{
+		QC_KeyEvent(1, K_ESCAPE, 0);
+		QC_KeyEvent(0, K_ESCAPE, 0);
+	}
 	return EM_TRUE;
 }
 
