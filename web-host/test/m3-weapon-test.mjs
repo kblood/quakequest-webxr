@@ -36,7 +36,11 @@ const { default: puppeteer } = await import(
 
 const IWER_PATH = process.env.QQ_IWER_JS
   || 'C:/Users/Caldor/AppData/Local/Temp/claude/C--Devstuff-QuestGames/ad44deaf-c35e-4dbd-b196-b4837498c5e0/scratchpad/node_modules/iwer/build/iwer.min.js';
-const URL_BASE = process.env.QQ_URL || 'http://localhost:8093/';
+/* M3 integration: default to the merged build served by `node web/serve.mjs
+ * 8090` (was 8093 = this chunk's private worktree webdist server); ?args=
+ * argv passthrough is now native to web/index.html, so the webdist
+ * regeneration step below is gone. */
+const URL_BASE = process.env.QQ_URL || 'http://localhost:8090/';
 const TEST_URL = URL_BASE + '?autostart=1&inputdebug=1&args=' +
   encodeURIComponent('+skill 0 +map start');
 const SCREENSHOT = process.argv[2] || 'm3-weapon-emulated.png';
@@ -49,21 +53,8 @@ const CHROME = [process.env.QQ_CHROME,
 if (!CHROME) { console.error('no chrome found (set QQ_CHROME)'); process.exit(2); }
 if (!existsSync(IWER_PATH)) { console.error('iwer not found (set QQ_IWER_JS): ' + IWER_PATH); process.exit(2); }
 
-// ---- regenerate webdist/index.html from the shared shell, adding ?args=
-// argv passthrough (the shared web/ dir itself is never modified) ----
-{
-  const src = resolve(HERE, '../../../web/index.html');
-  const dst = resolve(HERE, '../../webdist/index.html');
-  let html = readFileSync(src, 'utf8');
-  const needle = 'Module.callMain([]);';
-  if (!html.includes(needle)) {
-    console.error('index.html patch point not found: ' + needle); process.exit(2);
-  }
-  html = html.replace(needle,
-    "Module.callMain(((params.get('args') || '').match(/\\S+/g)) || []); // m3-weapon test: argv passthrough");
-  writeFileSync(dst, html);
-  console.log('# webdist/index.html regenerated (argv passthrough)');
-}
+// (the webdist/index.html regeneration step lived here pre-merge; ?args=
+// argv passthrough was upstreamed to web/index.html at M3 integration)
 
 const iwerSrc = readFileSync(IWER_PATH, 'utf8');
 const browser = await puppeteer.launch({

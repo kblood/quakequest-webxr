@@ -28,7 +28,9 @@ const { default: puppeteer } = await import(
 
 const IWER_PATH = process.env.QQ_IWER_JS
   || 'C:/Users/Caldor/AppData/Local/Temp/claude/C--Devstuff-QuestGames/ad44deaf-c35e-4dbd-b196-b4837498c5e0/scratchpad/node_modules/iwer/build/iwer.min.js';
-const URL = process.env.QQ_URL || 'http://localhost:8092/?autostart=1&locodebug=1&inputdebug=1';
+/* M3 integration: default to the merged build served by `node web/serve.mjs
+ * 8090` (was 8092 = this chunk's private worktree webdist server). */
+const URL = process.env.QQ_URL || 'http://localhost:8090/?autostart=1&locodebug=1&inputdebug=1';
 const SCREENSHOT = process.argv[2] || 'm3-loco-emulated.png';
 
 const CHROME = [process.env.QQ_CHROME,

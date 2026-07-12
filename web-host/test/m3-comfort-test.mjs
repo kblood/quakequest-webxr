@@ -34,8 +34,11 @@ const { default: puppeteer } = await import(
 
 const IWER_PATH = process.env.QQ_IWER_JS
   || 'C:/Users/Caldor/AppData/Local/Temp/claude/C--Devstuff-QuestGames/ad44deaf-c35e-4dbd-b196-b4837498c5e0/scratchpad/node_modules/iwer/build/iwer.min.js';
+/* M3 integration: default to the merged build served by `node web/serve.mjs
+ * 8090` (was 8095 = this chunk's private worktree webdist server);
+ * ?startargs= passthrough is now native to web/index.html. */
 const URL = process.env.QQ_URL
-  || 'http://localhost:8095/?autostart=1&inputdebug=1&startargs=%2Bmap,start';
+  || 'http://localhost:8090/?autostart=1&inputdebug=1&startargs=%2Bmap,start';
 const SCREENSHOT = process.argv[2] || 'm3-comfort-emulated.png';
 
 const CHROME = [process.env.QQ_CHROME,
@@ -139,17 +142,27 @@ check('device move reflected (yaw != 0)', !!hmd0 && Math.abs(hmd0.yaw) > 5, 'yaw
 const diagCountBefore = () => diag.length;
 const sawRecenterLog = (from) => diag.slice(from).some((d) => d.includes('[comfort] recentered'));
 
-// off-hand (LEFT, default cl_righthanded=1) thumbstick click = recenter
+// off-hand (LEFT, default cl_righthanded=1) thumbstick click LONG-press
+// (>= 600 ms) = recenter. M3 integration change: the plain click collided
+// with chunk 3's menu toggle in the merged build; in_menu.c now owns the
+// gesture (short press = menu, long press = recenter) — see
+// reports/09-m3-integration.md.
 let markA = diagCountBefore();
 await page.evaluate(() => {
   window.__xrdevice.controllers.left.updateButtonValue('thumbstick', 1.0);
 });
-await sleep(500);
+await sleep(1000); // hold well past the 600 ms long-press threshold
 await page.evaluate(() => {
   window.__xrdevice.controllers.left.updateButtonValue('thumbstick', 0.0);
 });
 await sleep(600);
-check('off-hand thumbstick click fires the recenter path (edge-detected)', sawRecenterLog(markA));
+check('off-hand thumbstick LONG-press fires the recenter path', sawRecenterLog(markA));
+// the long press must NOT have toggled the menu (that's the short press)
+{
+  const st = await page.evaluate(() => Module._VRMenuQuad_DebugState());
+  check('long-press did not open the menu (m_state stays m_none)',
+    ((st >> 16) & 0xff) === 0, 'probe=0x' + st.toString(16));
+}
 
 // vr_recenter console command (fallback trigger) should also fire the same
 // path. Move the device again first so it's a fresh, distinguishable click.
