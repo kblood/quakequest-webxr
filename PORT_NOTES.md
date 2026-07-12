@@ -1,4 +1,4 @@
-# PORT_NOTES — M1 (flatscreen) + M2 (WebXR stereo) + M3 foundation (input)
+# PORT_NOTES — M1 (flatscreen) + M2 (WebXR stereo) + M3 (input/gameplay) + M4 (headset-independent fixes)
 
 State as of 2026-07-12: **M1 + M2 complete (pending real-headset confirm);
 M3 input foundation in place** (controller poses/buttons/axes/haptics flow
@@ -167,6 +167,68 @@ menu/console/demo is up.
    only binds `/`): verified IN_Weapon_Init injects BOTH at init, after
    config.cfg exec — both flick directions work in the merged build.
 
+## M4 — headset-independent fixes (2026-07-12)
+
+### Water rendering on strict WebGL2 (known issue 11 — RESOLVED)
+
+Root cause (from live browser console capture): the fork's water/refraction
+GLSL builds its fragment shader without a default float precision —
+GLSL ES 1.00 fragment shaders have NONE, and desktop ANGLE enforces that
+strictly ("No precision specified for (float)" at the MODE_WATER locals),
+while Android GLES drivers were lenient. Three-part fix, all
+`__EMSCRIPTEN__`-guarded (Android/desktop behavior unchanged):
+
+1. **gl_rmain.c** `R_GLSL_CompilePermutation`: inject a
+   `precision highp/mediump float;` pretext line into fragment shaders (with
+   matching blank lines in vert/geom stages to keep line numbers aligned).
+2. **vid_android.c** `GLES_Init`: advertise FBO + NPOT support — WebGL2 has
+   framebuffer objects and NPOT textures in core (the GLES2 path probed for
+   `GL_OES_texture_npot`, which WebGL2 never advertises). This turns the
+   water FBO path (`usewaterfbo`) on; without it the fallback
+   `R_Mesh_CopyToTexture` path spams `glCopyTexSubImage2D` INVALID_OPERATION
+   (RGB backbuffer → RGBA texture) every frame.
+3. **gl_textures.c**: WebGL2 renderbuffers/depth textures need SIZED internal
+   formats — `GL_DEPTH24_STENCIL8` etc. instead of unsized
+   `GL_DEPTH_COMPONENT` in the GLES2 textype table.
+
+Verified: 0 console warnings across a full demo run, water visibly renders
+(web/screenshots/m4-water-fixed.png), m3-integration-test 18/18 (the XR-layer
+FBO seam is untouched — R_Mesh_Start refetches GL_FRAMEBUFFER_BINDING each
+frame). **Headset QA note:** this newly enables the water-FBO path on the
+Quest browser too — spot-check water perf + rendering in an XR session.
+
+### Full-game data drop-in (browser-local pak upload)
+
+`web/index.html` grew a file-picker (`#pak-input`, accept .pak/.pk3) that
+writes user-supplied pak files into `/quake_user/id1/` — the IDBFS mount
+`-userdir` points at, so they persist in IndexedDB across reloads and
+`FS_AddGameHierarchy` puts the userdir AHEAD of the preloaded shareware pak.
+**Client-side only**: bytes go browser-local, nothing is ever uploaded (the
+UI says so explicitly). While the engine is running, the page calls the new
+`WebHost_RescanFS()` export (main_web.c) → `fs_rescan`, which rebuilds the
+search path and re-checks `gfx/pop.lmp` to flip `registered`. Notes:
+
+- Vanilla DP `FS_Rescan` only ever SETS `registered`, never resets it to 0 —
+  removing paks live keeps "registered" until reload (UI mentions it).
+- **GOG "Quake Enhanced" (KEX) pak0.pak WORKS**: standard PACK, 1121 entries,
+  contains gfx/pop.lmp; 172 MB stores fine, e1m1 boots with remastered
+  assets, QC runs clean. Caveats: menu/HUD strings referencing `$qc_*`
+  localization keys show placeholder text (translations live in QuakeEX.kpf,
+  which DP doesn't load) and harmless `CVAR_SET: VARIABLE CAMPAIGN NOT
+  FOUND` notifies. Classic pak0.pak+pak1.pak give correct text; KEX is a
+  playable alternative — no hard "classic data required".
+- Harness: `web-host/test/m4-gamedata-test.mjs` (11 checks, synthetic
+  registered-marker pak; optional `QQ_KEX_PAK=<path>` compat recon).
+
+### cl_trackingmode config stomp (reports/08b issue 3 — RESOLVED)
+
+See in_weapon.c "cl_trackingmode: runtime value vs saved preference": the
+user preference is latched at init and on any non-forced cvar change; VR
+entry applies the preference (not a hardcoded 1); flatscreen forces 0 at
+runtime only; `IN_Weapon_SaveConfigPreservingTrackingMode()` swaps the
+preference in around Host_SaveConfig so config.cfg never records the forced
+value. Harness: `web-host/test/m4-trackingmode-test.mjs` (15 checks).
+
 ## M2 architecture (see reports/05-webxr-bridge-design.md — implemented as designed)
 
 - `web-host/lib/webxr/` — vendored emscripten-webxr @1bc0b7b with **11
@@ -317,6 +379,13 @@ pak preloaded to MEMFS at `/quake/id1/pak0.pak`).
    firing into freed heap (OOB trap per audio tick) + a stale resume
    listener on a closed AudioContext; VID restarts run on every XR session
    enter/exit, so sound stays up across them.
+9. **gl_rmain.c** (M4) — under `__EMSCRIPTEN__`, inject a default fragment
+   float precision pretext into GLSL compiles (water fix, see M4 section).
+10. **vid_android.c** (M4) — under `__EMSCRIPTEN__`, advertise FBO + NPOT
+    support in `GLES_Init` (core in WebGL2; the extension strings probed on
+    Android never appear).
+11. **gl_textures.c** (M4) — under `__EMSCRIPTEN__`, sized depth/stencil
+    internal formats in the GLES2 textype table (WebGL2 requirement).
 
 Nothing else in the engine is modified. `snd_opensl.c` (Android OpenSL) is
 simply not compiled; `snd_sdl.c` + the standard snd stack replace it.
@@ -390,9 +459,9 @@ buffer is supplied. That removes the per-draw copy tax and would let
     render per-eye at the eye viewports (readable but head-locked). M3's
     in-scene menu quad + d-pad nav replaces this. Menu toggle needs a
     rebind (no Menu button in browser Gamepad API — reports/06).
-11. **Water GLSL permutation fails on strict WebGL2** (missing precision
-    qualifiers in the fork's default.glsl water path) — logged fallback,
-    fix when it visibly matters.
+11. ~~Water GLSL permutation fails on strict WebGL2~~ **RESOLVED in M4**
+    (missing default fragment precision + FBO/NPOT support flags + sized
+    depth formats — see the M4 section above).
 12. **In-headset "Exit VR"**: the page button isn't reachable in-headset;
     Quest's system UI ends the session (wired + tested). An in-game menu
     item can call `WebXRBridge_RequestExit()` in M3.
