@@ -3,3 +3,6 @@ webdist/quake.js
 webdist/quake.wasm
 webdist/quake.data
 webdist-es2/
+webdist/index.html
+webdist/serve.mjs
+web-host/test/*.png
