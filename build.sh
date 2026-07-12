@@ -133,6 +133,8 @@ web-host/fbo_smoketest.c
 web-host/webxr_bridge.c
 web-host/webxr_input.c
 web-host/in_weapon.c
+web-host/in_menu.c
+web-host/vr_menu_quad.c
 "
 
 # --- audio backend ---

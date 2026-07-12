@@ -29,6 +29,7 @@
 #include "keys.h"
 
 #include "webxr_bridge.h"   /* M2: WebXR session/rendering bridge */
+#include "vr_menu_quad.h"   /* WEBXR-PORT M3-hud: bigScreen state + menu quad */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void Host_Main(void);                       /* host.c  — Host_Init() only (loop already inverted) */
@@ -57,10 +58,14 @@ float playerHeight      = 0.0f;      /* view.c: standing-height reference */
 
 /* true => "2D big screen" mode: zero stereo eye separation (gl_rmain.c:58)
  * and no per-eye crosshair/HUD offsets (sbar.c:141). Right for flatscreen;
- * false during an immersive session (M2). */
+ * during an immersive session it is the fork's exact 2D-UI predicate
+ * (QuakeQuest_OpenXR.c:97-100) and drives the world-anchored menu quad
+ * (WEBXR-PORT M3-hud, vr_menu_quad.c). */
 qboolean VR_UseScreenLayer(void)
 {
-	return !WebXRBridge_IsSessionActive();
+	if (!WebXRBridge_IsSessionActive())
+		return true;
+	return (bigScreen != 0 || cls.demoplayback || key_consoleactive); /* WEBXR-PORT M3-hud */
 }
 
 /* cl_screen.c: vertical FOV in degrees (Android host returned the HMD fov_y;
@@ -82,11 +87,8 @@ float GetSysTicrate(void)
 }
 
 /* cl_screen.c/console.c/menu.c toggle the VR "big screen" (2D menu quad)
- * through this. Flatscreen: nothing to do. */
-void BigScreenMode(int mode)
-{
-	(void)mode;
-}
+ * through BigScreenMode() — since M3-hud it lives in vr_menu_quad.c and
+ * tracks the engine's 2D-UI state for the world-anchored menu quad. */
 
 /* sys_shared.c calls this from Sys_Quit. */
 void QC_exit(int exitCode)
@@ -386,6 +388,7 @@ int main(int argc, char **argv)
 	/* ---- WebXR bridge (M2): registers session callbacks; the "Enter VR"
 	 * button calls _WebXRBridge_RequestSession from its click handler ---- */
 	WebXRBridge_Init();
+	VRMenuQuad_Init(); /* WEBXR-PORT M3-hud: vr_menu_distance/vr_menu_width cvars */
 
 	/* ---- browser drives the frame pump (rAF timing) ---- */
 	emscripten_set_main_loop(web_frame, 0, EM_FALSE);

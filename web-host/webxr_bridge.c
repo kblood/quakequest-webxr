@@ -38,6 +38,8 @@
 #include "webxr_bridge.h"
 #include "webxr_input.h"   /* M3 foundation: controller snapshot + haptics */
 #include "in_weapon.h"     /* WEBXR-PORT M3-weapon: IN_Weapon_AimActive */
+#include "in_menu.h"       /* WEBXR-PORT M3-hud: menu toggle + nav keys */
+#include "vr_menu_quad.h"  /* WEBXR-PORT M3-hud: world-anchored 2D-UI quad */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void QC_BeginFrame(bool stopTime);            /* vid_android.c */
@@ -476,6 +478,13 @@ static void WebXRBridge_OnXRFrame(void *userData, int timeMs,
      * frame callback (poses need the live XRFrame) and before QC_BeginFrame
      * so gameplay code (the four M3 chunks) sees this frame's state. */
     WebXRInput_Update(emscripten_get_now());
+
+    IN_Menu_HandleInput(); /* WEBXR-PORT M3-hud: menu toggle + big-screen d-pad nav */
+
+    /* WEBXR-PORT M3-hud: engine in 2D-UI mode (menu/console/loading/demo) ->
+     * render flat into the UI FBO and draw a world-anchored quad per eye
+     * instead of the head-locked stereo render */
+    if (VRMenuQuad_RunFrame(views)) { WebHost_PersistTick(); return; }
 
     /* WEBXR-PORT M3-weapon: gunangles are controller-driven now (in_weapon.c,
      * dispatched from WebXRInput_Update above). Head aim (M2 behavior) stays
