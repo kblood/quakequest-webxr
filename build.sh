@@ -132,6 +132,7 @@ web-host/main_web.c
 web-host/fbo_smoketest.c
 web-host/webxr_bridge.c
 web-host/webxr_input.c
+web-host/in_locomotion.c
 "
 
 # --- audio backend ---
