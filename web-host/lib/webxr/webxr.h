@@ -90,6 +90,36 @@ typedef struct WebXRInputSource {
     WebXRTargetRayMode targetRayMode;
 } WebXRInputSource;
 
+/* WEBXR-PORT PATCH #12: full per-frame controller snapshot (poses + gamepad).
+ * Upstream only exposed pose queries (webxr_get_input_pose) and select events;
+ * the Gamepad API surface (buttons/axes/haptics presence) was unreachable from
+ * C. Layout is marshaled field-by-field in library_webxr.js — keep the two in
+ * sync (all members are 4-byte scalars; struct size = 196 bytes). */
+#define WEBXR_INPUT_MAX_BUTTONS 8
+#define WEBXR_INPUT_MAX_AXES 4
+
+typedef struct WebXRButtonState {
+    int pressed;    /* GamepadButton.pressed (0/1) */
+    int touched;    /* GamepadButton.touched (0/1) */
+    float value;    /* GamepadButton.value (0..1, analog for trigger/squeeze) */
+} WebXRButtonState;
+
+typedef struct WebXRControllerState {
+    int present;                 /* an XRInputSource with this handedness exists */
+    int gripValid;               /* gripSpace pose located this frame */
+    float gripPosition[3];       /* meters, XR reference space (x right, y up, z back) */
+    float gripOrientation[4];    /* quaternion x,y,z,w */
+    int aimValid;                /* targetRaySpace pose located this frame */
+    float aimPosition[3];
+    float aimOrientation[4];
+    int gamepadConnected;        /* inputSource.gamepad != null ("xr-standard") */
+    int hasHaptic;               /* gamepad.hapticActuators[0].pulse available */
+    int buttonCount;             /* valid entries in buttons[] */
+    int axisCount;               /* valid entries in axes[] */
+    WebXRButtonState buttons[WEBXR_INPUT_MAX_BUTTONS];
+    float axes[WEBXR_INPUT_MAX_AXES]; /* xr-standard: [2]=thumbstick x, [3]=thumbstick y (+y = DOWN) */
+} WebXRControllerState;
+
 /**
 Callback for errors
 
@@ -226,6 +256,27 @@ Get input pose. Can only be called during the frame callback.
 @returns `false` if updating the pose failed, `true` otherwise.
 */
 extern int webxr_get_input_pose(WebXRInputSource* source, WebXRRigidTransform* outPose, WebXRInputPoseMode mode);
+
+/* WEBXR-PORT PATCH #12 (see struct above).
+Snapshot one hand's controller state (poses + gamepad buttons/axes).
+Must be called during the frame callback (poses need the XRFrame).
+`out` is always fully zeroed first, so absent hands read as all-zero.
+
+@param handedness WEBXR_HANDEDNESS_LEFT or WEBXR_HANDEDNESS_RIGHT.
+@param out Receives the state.
+@returns 1 if an input source with that handedness exists, else 0. */
+extern int webxr_get_controller_state(int handedness, WebXRControllerState* out);
+
+/* WEBXR-PORT PATCH #13: fire a haptic pulse on one hand's controller via
+gamepad.hapticActuators[0].pulse() (playEffect fallback). Safe no-op (returns
+0) when there is no session, no such hand, or no actuator. Callable any time
+(does not need the frame callback).
+
+@param handedness WEBXR_HANDEDNESS_LEFT or WEBXR_HANDEDNESS_RIGHT.
+@param intensity 0..1 (clamped).
+@param durationMs pulse length in milliseconds.
+@returns 1 if a pulse was issued, else 0. */
+extern int webxr_haptic_pulse(int handedness, float intensity, int durationMs);
 
 #ifdef __cplusplus
 }

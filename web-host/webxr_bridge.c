@@ -36,6 +36,7 @@
 
 #include "lib/webxr/webxr.h"
 #include "webxr_bridge.h"
+#include "webxr_input.h"   /* M3 foundation: controller snapshot + haptics */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void QC_BeginFrame(bool stopTime);            /* vid_android.c */
@@ -337,6 +338,16 @@ bool WebXRBridge_IsSessionActive(void)
     return s_sessionActive;
 }
 
+/* HMD position delta this frame (raw XR axes, meters) — the fork's
+ * positionDeltaThisFrame equivalent, computed in VR_SetHMDPosition above.
+ * Consumed by the M3 input foundation (webxr_input.h). */
+void WebXRBridge_GetHMDPositionDelta(float out[3])
+{
+    out[0] = s_positionDelta[0];
+    out[1] = s_positionDelta[1];
+    out[2] = s_positionDelta[2];
+}
+
 /* Vertical FOV for frustum culling (cl_screen.c:2112). Derived from the
  * cached projection matrix: tanUp = (1+P[9])/P[5], tanDown = (1-P[9])/P[5].
  * XR lens frusta are asymmetric while the engine assumes symmetric, so use
@@ -384,6 +395,10 @@ static void WebXRBridge_OnSessionEnd(void *userData, int mode)
     s_frameDataValid = false;
     s_inXRFrame = false;
     vrMode = 0;
+
+    /* zero controller/input state so stale buttons/poses don't leak into
+     * flatscreen or the next session */
+    WebXRInput_Reset();
 
     /* back to the canvas backbuffer + flatscreen render size */
     webxr_js_bind_canvas();
@@ -454,8 +469,16 @@ static void WebXRBridge_OnXRFrame(void *userData, int timeMs,
     VR_SetHMDPosition(headPose->position[0], headPose->position[1], headPose->position[2]);
     VR_SetHMDOrientation(ypr[0], ypr[1], ypr[2]);
 
-    /* M2 aims with the head (controllers are M3): the fork sends gunangles,
-     * not viewangles, to the server as aim (cl_input.c:1845). */
+    /* M3 foundation: snapshot both controllers (grip+aim poses, gamepad
+     * buttons/axes) into webxr_input.c's raw + TBXR-compatible state, tick
+     * haptic channels, feed the vr_inputdebug dump. Must run inside the
+     * frame callback (poses need the live XRFrame) and before QC_BeginFrame
+     * so gameplay code (the four M3 chunks) sees this frame's state. */
+    WebXRInput_Update(emscripten_get_now());
+
+    /* M2 aims with the head (controller-driven gunangles land with M3
+     * chunk 2): the fork sends gunangles, not viewangles, to the server as
+     * aim (cl_input.c:1845). */
     gunangles[0] = hmdorientation[0];
     gunangles[1] = hmdorientation[1];
     gunangles[2] = 0.0f;
@@ -506,6 +529,7 @@ void WebXRBridge_Init(void)
                WebXRBridge_OnSessionEnd,
                WebXRBridge_OnError,
                NULL);
+    WebXRInput_Init(); /* M3 foundation: vr_inputdebug cmd + ?inputdebug=1 */
     printf("[webxr] bridge initialised\n");
 }
 

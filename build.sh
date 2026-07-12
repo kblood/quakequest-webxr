@@ -130,6 +130,7 @@ web-host/sys_web.c
 web-host/main_web.c
 web-host/fbo_smoketest.c
 web-host/webxr_bridge.c
+web-host/webxr_input.c
 "
 
 # --- audio backend ---
@@ -167,7 +168,7 @@ fi
 LDFLAGS="-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
   -sINITIAL_MEMORY=256MB -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=8MB \
   -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
-  -sEXPORTED_RUNTIME_METHODS=callMain,FS \
+  -sEXPORTED_RUNTIME_METHODS=callMain,FS,UTF8ToString \
   -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
   --js-library web-host/lib/webxr/library_webxr.js \
   -lidbfs.js \

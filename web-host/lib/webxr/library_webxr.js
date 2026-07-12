@@ -346,6 +346,88 @@ webxr_get_input_sources: function(outArrayPtr, max, outCountPtr) {
     setValue(outCountPtr, i, 'i32');
 },
 
+/* WEBXR-PORT PATCH #12: full controller snapshot — grip + aim poses and the
+ * Gamepad API ("xr-standard") buttons/axes/haptics presence, marshaled into a
+ * WebXRControllerState (webxr.h; 196 bytes, layout mirrored here). */
+webxr_get_controller_state: function(hand, outPtr) {
+    /* zero the whole struct first so absent hands/fields read as 0 */
+    for (let w = 0; w < 49; ++w) setValue(outPtr + w*4, 0, 'i32');
+
+    const s = Module['webxr_session'];
+    const f = Module['webxr_frame'];
+    if (!s) return 0;
+
+    const handStr = hand === 0 ? 'left' : 'right';
+    let src = null;
+    for (let inputSource of s.inputSources) {
+        if (inputSource.handedness === handStr) { src = inputSource; break; }
+    }
+    if (!src) return 0;
+
+    setValue(outPtr + 0, 1, 'i32'); /* present */
+
+    /* poses need the XRFrame (only valid inside the frame callback) */
+    const ref = f ? WebXR.refSpaces[WebXR.refSpace] : null;
+    if (f && ref && src.gripSpace) {
+        const p = f.getPose(src.gripSpace, ref);
+        if (p && !Number.isNaN(p.transform.matrix[0])) {
+            setValue(outPtr + 4, 1, 'i32'); /* gripValid */
+            WebXR._nativize_vec3(outPtr + 8, p.transform.position);
+            WebXR._nativize_vec4(outPtr + 20, p.transform.orientation);
+        }
+    }
+    if (f && ref && src.targetRaySpace) {
+        const p = f.getPose(src.targetRaySpace, ref);
+        if (p && !Number.isNaN(p.transform.matrix[0])) {
+            setValue(outPtr + 36, 1, 'i32'); /* aimValid */
+            WebXR._nativize_vec3(outPtr + 40, p.transform.position);
+            WebXR._nativize_vec4(outPtr + 52, p.transform.orientation);
+        }
+    }
+
+    const gp = src.gamepad;
+    if (gp) {
+        setValue(outPtr + 68, 1, 'i32'); /* gamepadConnected */
+        const act = gp.hapticActuators && gp.hapticActuators[0];
+        setValue(outPtr + 72, (act && (act.pulse || act.playEffect)) ? 1 : 0, 'i32');
+        const nb = Math.min(gp.buttons.length, 8);
+        const na = Math.min(gp.axes.length, 4);
+        setValue(outPtr + 76, nb, 'i32');
+        setValue(outPtr + 80, na, 'i32');
+        for (let i = 0; i < nb; ++i) {
+            const b = gp.buttons[i];
+            setValue(outPtr + 84 + i*12 + 0, b.pressed ? 1 : 0, 'i32');
+            setValue(outPtr + 84 + i*12 + 4, b.touched ? 1 : 0, 'i32');
+            setValue(outPtr + 84 + i*12 + 8, b.value || 0, 'float');
+        }
+        for (let i = 0; i < na; ++i)
+            setValue(outPtr + 180 + i*4, gp.axes[i] || 0, 'float');
+    }
+    return 1;
+},
+
+/* WEBXR-PORT PATCH #13: haptic pulse with graceful no-op fallback. */
+webxr_haptic_pulse: function(hand, intensity, durationMs) {
+    const s = Module['webxr_session'];
+    if (!s) return 0;
+    const handStr = hand === 0 ? 'left' : 'right';
+    intensity = Math.min(Math.max(intensity, 0), 1);
+    for (let src of s.inputSources) {
+        if (src.handedness !== handStr || !src.gamepad) continue;
+        const act = src.gamepad.hapticActuators && src.gamepad.hapticActuators[0];
+        if (!act) continue;
+        try {
+            if (act.pulse) { act.pulse(intensity, durationMs); return 1; }
+            if (act.playEffect) {
+                act.playEffect('dual-rumble', { duration: durationMs,
+                    strongMagnitude: intensity, weakMagnitude: intensity });
+                return 1;
+            }
+        } catch(e) { /* actuator rejected the request — treat as no-op */ }
+    }
+    return 0;
+},
+
 webxr_get_input_pose: function(source, outPosePtr, space) {
     let f = Module['webxr_frame'];
     if(!f) {

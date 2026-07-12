@@ -92,6 +92,26 @@ world clipped at ~26 map units... i.e. visibly broken. Fix: updateRenderState.
 - Enum tag names were used as bare type names (C++ only) — typedef'd.
 - `webxr_get_input_pose` had a C++ default argument — removed.
 
+## #12 — controller/gamepad snapshot API (library_webxr.js + webxr.h) [M3, additive]
+
+Upstream exposed controller *poses* (`webxr_get_input_pose`) and select
+events, but no way to read `XRInputSource.gamepad` (xr-standard buttons/axes/
+haptics presence) from C. Added `webxr_get_controller_state(handedness, out)`:
+zeroes then fills a `WebXRControllerState` (196 bytes, all 4-byte scalars,
+layout hand-marshaled in JS — keep webxr.h and the JS offsets in sync) with
+per-hand presence, grip pose, targetRay (aim) pose, and up to 8 gamepad
+buttons (pressed/touched/value) + 4 axes. Poses require the live XRFrame
+(frame-callback only); the gamepad part works whenever a session exists.
+Consumed by `web-host/webxr_input.c` (M3 input foundation).
+
+## #13 — haptic pulse (library_webxr.js + webxr.h) [M3, additive]
+
+Upstream had no haptics path at all. Added `webxr_haptic_pulse(handedness,
+intensity, durationMs)` → `gamepad.hapticActuators[0].pulse()` with a
+`playEffect('dual-rumble', ...)` fallback and a safe no-op (returns 0) when
+there is no session/hand/actuator (e.g. emulated runtimes). Backs the
+TBXR_Vibrate-compatible channel logic in `web-host/webxr_input.c`.
+
 ## #11 — WebXRSessionFeatures values were indices, not bits (webxr.h)
 
 Upstream declared the feature enum as ordinals (LOCAL=0, LOCAL_FLOOR=1, …)
