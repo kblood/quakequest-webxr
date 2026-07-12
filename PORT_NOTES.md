@@ -117,6 +117,56 @@ per-eye stereo into the XRWebGLLayer framebuffer. Config/saves persist via
 IDBFS. Verified headless incl. a full emulated XR session (IWER): enter →
 stereo render → exit → re-enter, zero console/page errors.
 
+## M3 gameplay — merged (integration pass 2026-07-12, reports/09-m3-integration.md)
+
+All four M3 chunks (locomotion `in_locomotion.c`, weapon `in_weapon.c`,
+hud/menus `vr_menu_quad.c`+`in_menu.c`, comfort `in_comfort.c`) are merged.
+Per-frame dispatch order (fixed, do not reorder casually):
+`WebXRInput_Update` → `IN_Weapon_Update` (sets gunangles for the frame) →
+haptics/debug → `WebXRLoco_Update` (reads gunangles); then in OnXRFrame:
+`IN_Menu_HandleInput` → `VRMenuQuad_RunFrame` (early-returns on 2D-UI
+frames) → `WebXRComfort_Update` → head-aim gunangles fallback → frame pump.
+Note `WebXRComfort_Update` sits after the quad early-return by design:
+quicksave/quickload/bullet-time are gameplay actions and stay inert while a
+menu/console/demo is up.
+
+### Merged VR binding map (default cl_righthanded 1)
+
+| Input | Action | Owner |
+|---|---|---|
+| Dominant (R) trigger | fire (`+attack`) | in_weapon |
+| Off-hand (L) trigger | run (`+speed`); fire when left-handed | in_locomotion |
+| Dominant (R) thumbstick click | laser-sight cycle | in_weapon |
+| Off-hand (L) thumbstick click SHORT (<600 ms) | menu toggle (K_ESCAPE dn+up on release) | in_menu |
+| Off-hand (L) thumbstick click LONG (≥600 ms, in-game) | recenter + haptic confirm | in_menu → in_comfort |
+| Right stick Y flick (±0.7) | weapon prev/next (`/`=impulse 10, `#`=impulse 12, binds injected by IN_Weapon_Init) | in_weapon |
+| Right stick X | snap/stick turn (vr_yawmode) | in_locomotion |
+| Left stick | smooth locomotion (deadzone+curve) | in_locomotion |
+| Off-hand grip + hands <0.5 m | two-handed stabilization | in_weapon |
+| Left X / Y (always physical left) | quicksave / quickload | in_comfort |
+| Both sticks + A/B while menu up | d-pad nav / select / back | in_menu |
+
+### Integration fixes (found only in the merged build)
+
+1. **Off-hand thumbstick-click collision**: chunk 3 bound MENU TOGGLE and
+   chunk 4 bound RECENTER to the same click — both reports independently
+   called it "the one input the fork left free". In the merge the click
+   opened the menu AND (on the closing click, via stale edge state across
+   the quad path's early return) fired a spurious recenter. Resolution:
+   `in_menu.c` is the single owner of the gesture — short press toggles the
+   menu (fires on release; <1-frame cost), long press (≥600 ms) recenters
+   with a 150 ms haptic confirm, disabled while the menu quad is up (a
+   recenter would yank the quad anchor; release just closes the menu).
+   Menu keeps the plain click per chunk 3's rationale; `vr_recenter`
+   console command remains.
+2. **`?args=` argv passthrough upstreamed to `web/index.html`**
+   (space-separated; `?startargs=` comma form kept for the comfort
+   harness) — was previously per-worktree test-copy only (08b issue 6).
+   Useful in-headset too (`?args=+map e1m2`).
+3. Weapon-switch binds `/` + `#` (08d flagged the shareware default.cfg
+   only binds `/`): verified IN_Weapon_Init injects BOTH at init, after
+   config.cfg exec — both flick directions work in the merged build.
+
 ## M2 architecture (see reports/05-webxr-bridge-design.md — implemented as designed)
 
 - `web-host/lib/webxr/` — vendored emscripten-webxr @1bc0b7b with **11

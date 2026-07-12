@@ -3,9 +3,22 @@
  * See in_menu.h for the binding rationale (off-hand thumbstick click = menu).
  *
  * Faithful port of the fork's big-screen branches:
- *  - menu toggle: press/release forwarded as K_ESCAPE, exactly like
- *    handleTrackedControllerButton(..., xrButton_Enter, K_ESCAPE)
- *    (QuakeQuest_OpenXR.c:912-914) — K_ESCAPE down runs togglemenu;
+ *  - menu toggle: off-hand thumbstick click -> K_ESCAPE (down+up), the
+ *    rebind of the fork's handleTrackedControllerButton(..., xrButton_Enter,
+ *    K_ESCAPE) (QuakeQuest_OpenXR.c:912-914) — K_ESCAPE down runs togglemenu.
+ *    M3 INTEGRATION CHANGE (reports/09-m3-integration.md): chunk 4
+ *    (in_comfort.c) independently bound RECENTER to the same off-hand click
+ *    — both chunks' reports justified the pick as "the one input the fork
+ *    left free", a collision only visible in the merged build. This module
+ *    now owns the whole gesture as its single reader:
+ *      short press (release before 600 ms)  -> menu toggle (K_ESCAPE dn+up)
+ *      LONG press (held >= 600 ms, in-game) -> WebXRComfort_Recenter()
+ *                                              (+ haptic confirm, no menu)
+ *    The toggle firing on release instead of press costs ~nothing in menu
+ *    latency and keeps recenter reachable in-headset without stealing any
+ *    other input. While the menu/console is up (bigScreen != 0) the long
+ *    press is disabled — a recenter under the world-anchored menu quad
+ *    would yank the quad's anchor; any press just closes the menu.
  *  - while bigScreen != 0 (menu or console up): BOTH thumbsticks emulate a
  *    d-pad with the fork's exact ±0.7 edge thresholds and keys
  *    ('a'/'d' = left/right — the fork's menu.c handles these — and
@@ -22,11 +35,14 @@
  * Part of the QuakeQuest->WebXR port. GPL-2.0 (see ../darkplaces/COPYING).
  */
 
+#include <emscripten.h> /* emscripten_get_now — long-press timing */
+
 #include "quakedef.h"
 #include "keys.h"
 
 #include "webxr_input.h"
 #include "in_menu.h"
+#include "in_comfort.h"   /* WebXRComfort_Recenter — off-hand click LONG press */
 #include "vr_menu_quad.h" /* bigScreen */
 
 void QC_KeyEvent(int state, int key, int character); /* vid_android.c -> Key_Event */
@@ -36,6 +52,12 @@ extern cvar_t cl_righthanded; /* cl_input.c — selects the off-hand */
 
 /* private previous-state copies (see header) */
 static WebXRRemoteState s_prev[WEBXR_HAND_COUNT];
+
+/* off-hand thumbstick-click gesture state (short press = menu toggle,
+ * long press = recenter — see file header) */
+#define MENU_LONGPRESS_MS 600.0
+static double s_offClickStartMs = -1.0;  /* <0 = not pressed */
+static bool   s_offClickConsumed = false; /* long-press already fired */
 
 /* fork's handleTrackedControllerButton (QuakeQuest_OpenXR.c:595-603):
  * forward both the press and the release edge as key state changes */
@@ -69,12 +91,52 @@ void IN_Menu_HandleInput(void)
 	if (!WebXRBridge_IsSessionActive())
 	{
 		memset(s_prev, 0, sizeof(s_prev));
+		s_offClickStartMs = -1.0;
+		s_offClickConsumed = false;
 		return;
 	}
 
-	/* menu toggle: off-hand thumbstick click -> K_ESCAPE (rebind of the
-	 * fork's unavailable Quest Menu button; see in_menu.h) */
-	MenuButton(hand[offHand], &s_prev[offHand], offThumbBit, K_ESCAPE);
+	/* off-hand thumbstick click gesture (rebind of the fork's unavailable
+	 * Quest Menu button; see file header for the short/long-press split):
+	 *   short press -> menu toggle (K_ESCAPE down+up on release);
+	 *   long press (>= MENU_LONGPRESS_MS, in-game only) -> recenter. */
+	{
+		bool down = (hand[offHand]->Buttons & offThumbBit) != 0;
+		bool was  = (s_prev[offHand].Buttons & offThumbBit) != 0;
+		double now = emscripten_get_now();
+
+		if (down && !was)
+		{
+			s_offClickStartMs = now;
+			s_offClickConsumed = false;
+		}
+		else if (down && !s_offClickConsumed && s_offClickStartMs >= 0.0 &&
+		         (now - s_offClickStartMs) >= MENU_LONGPRESS_MS &&
+		         bigScreen == 0 /* with the menu up, never recenter (the quad
+		                         * anchor would yank) — let the release fall
+		                         * through to the short-press toggle instead,
+		                         * so any click while in a menu closes it */)
+		{
+			s_offClickConsumed = true;
+			WebXRComfort_Recenter();
+			/* haptic confirm on the pressing (off-)hand: an eyes-free cue
+			 * that the long press registered as recenter, not menu */
+			WebXRInput_Vibrate(150, (offHand == WEBXR_HAND_LEFT) ? 1 : 2, 0.7f);
+		}
+		else if (!down && was)
+		{
+			if (!s_offClickConsumed)
+			{
+				/* short press: the fork forwarded press+release of K_ESCAPE
+				 * (handleTrackedControllerButton); firing the pair on release
+				 * preserves those Key_Event semantics exactly */
+				QC_KeyEvent(1, K_ESCAPE, 0);
+				QC_KeyEvent(0, K_ESCAPE, 0);
+			}
+			s_offClickStartMs = -1.0;
+			s_offClickConsumed = false;
+		}
+	}
 
 	if (bigScreen != 0)
 	{

@@ -12,13 +12,17 @@
  *
  * Covers:
  *  - Recenter/height calibration: lib/webxr PATCH #14 (webxr_recenter(),
- *    JS-side getOffsetReferenceSpace swap, called from WebXRComfort_Update()
- *    below, itself invoked from webxr_bridge.c's WebXRBridge_OnXRFrame) does
- *    the actual work; this module supplies the in-game trigger (off-hand
- *    thumbstick click + `vr_recenter` console command) and re-latches
- *    playerHeight on success. The fork's TBXR_Recenter had no in-game
- *    control (system-event-only) — see reports/08d-comfort.md for why an
- *    explicit control was added and where it's bound.
+ *    JS-side getOffsetReferenceSpace swap) does the actual work; this module
+ *    supplies WebXRComfort_Recenter() (re-latches playerHeight on success)
+ *    and the `vr_recenter` console command. The fork's TBXR_Recenter had no
+ *    in-game control (system-event-only) — see reports/08d-comfort.md.
+ *    M3 INTEGRATION CHANGE (reports/09-m3-integration.md): this chunk's
+ *    original in-game trigger was the off-hand thumbstick CLICK, which
+ *    collided with chunk 3's menu toggle (in_menu.c chose the same input —
+ *    both chunks independently picked "the one input the fork left free").
+ *    Resolution: in_menu.c owns the whole off-hand-click gesture now —
+ *    short press = menu toggle, LONG press (>= 600 ms, in-game only) calls
+ *    WebXRComfort_Recenter(). This module no longer reads the click at all.
  *  - Quicksave/quickload (physical left X/Y) — FIXED dead-code port of
  *    QuakeQuest_OpenXR.c:965-983 (canUseQuickSave was hardcoded false;
  *    reports/06 flagged this and recommended enabling it for the web port).
@@ -53,6 +57,13 @@
 /* One-time setup after Host_Main(): registers `vr_recenter` (console command
  * fallback, also the harness-testable surface for the recenter trigger). */
 void WebXRComfort_Init(void);
+
+/* Recenter (yaw + XZ position via lib/webxr PATCH #14) and re-latch
+ * playerHeight. Triggers: the `vr_recenter` console command (here) and the
+ * off-hand thumbstick LONG-press (in_menu.c, which owns the off-hand click
+ * gesture — see the M3 integration note above). Safe no-op outside a
+ * session (webxr_recenter() returns 0 without a reference space). */
+void WebXRComfort_Recenter(void);
 
 /* Called once per XR frame from webxr_bridge.c's OnXRFrame, after
  * WebXRInput_Update (needs this frame's fresh button/axis state) and before

@@ -12,8 +12,13 @@
  * (left stick for the default right-handed config, right stick when
  * cl_righthanded 0). Rationale: the off-hand stick click is the one Touch
  * input the fork left completely unused — the DOMINANT stick click cycles
- * r_lasersight (chunk 2) and X/Y are quicksave/quickload (chunk 4) — so this
- * choice is collision-free for both handedness settings.
+ * r_lasersight (chunk 2) and X/Y are quicksave/quickload (chunk 4).
+ *
+ * M3 INTEGRATION: chunk 4 independently bound RECENTER to the same click
+ * (same "only free input" rationale — a collision only the merged build
+ * could show). This module now owns the whole gesture: SHORT press
+ * (release < 600 ms) = menu toggle, LONG press (>= 600 ms, in-game only) =
+ * WebXRComfort_Recenter(). See reports/09-m3-integration.md.
  *
  * Part of the QuakeQuest->WebXR port. GPL-2.0 (see ../darkplaces/COPYING).
  */

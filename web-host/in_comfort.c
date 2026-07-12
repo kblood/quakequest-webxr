@@ -58,11 +58,14 @@ static uint32_t s_prevButtons[WEBXR_HAND_COUNT];
  * the whole fork tree: zero hits on any button calling TBXR_Recenter).
  * That's a real gap for a browser tab, where a system-level recenter
  * gesture is far less discoverable than it was in the native Android app,
- * so this chunk adds one: off-hand thumbstick click (unused by the fork —
- * only the DOMINANT hand's thumbstick click was ever read, for the
- * laser-sight toggle; that's chunk 2's territory here, see the note below)
- * plus the `vr_recenter` console command as a keyboard/harness-reachable
- * fallback. See lib/webxr/PATCHES.md #14 for the getOffsetReferenceSpace
+ * so this chunk adds one. M3 INTEGRATION CHANGE: the original binding here
+ * (off-hand thumbstick CLICK) collided with chunk 3's menu toggle — both
+ * chunks independently picked the same "only free input" (see
+ * reports/09-m3-integration.md). The click gesture is now owned entirely
+ * by in_menu.c: short press = menu, LONG press (>= 600 ms, in-game only)
+ * calls WebXRComfort_Recenter() below. The `vr_recenter` console command
+ * remains as a keyboard/harness-reachable fallback.
+ * See lib/webxr/PATCHES.md #14 for the getOffsetReferenceSpace
  * mechanics (why it's done JS-side against the shared reference space
  * rather than as a C-side position offset: a C-side-only offset on
  * hmdPosition would desync from controller positions, which are tracked
@@ -70,7 +73,7 @@ static uint32_t s_prevButtons[WEBXR_HAND_COUNT];
  * weapon math — the JS reference-space swap keeps every consumer,
  * including chunk 2's weapon aim, in the same frame automatically).
  * ===================================================================== */
-static void WebXRComfort_Recenter(void)
+void WebXRComfort_Recenter(void)
 {
     if (webxr_recenter())
     {
@@ -232,18 +235,13 @@ static void WebXRComfort_BulletTime(void)
  * ===================================================================== */
 void WebXRComfort_Update(void)
 {
-    int offHand = cl_righthanded.integer ? WEBXR_HAND_LEFT : WEBXR_HAND_RIGHT;
-
     WebXRComfort_QuickSaveLoad();
     WebXRComfort_BulletTime();
 
-    /* off-hand thumbstick click = recenter (unused by the fork; free) */
-    uint32_t offButtons = (offHand == WEBXR_HAND_LEFT) ? leftTrackedRemoteState_new.Buttons
-                                                         : rightTrackedRemoteState_new.Buttons;
-    bool recenterNow  = (offButtons & xrButton_Joystick) != 0;
-    bool recenterPrev = (s_prevButtons[offHand] & xrButton_Joystick) != 0;
-    if (recenterNow && !recenterPrev)
-        WebXRComfort_Recenter();
+    /* NOTE: the off-hand thumbstick-click recenter trigger that used to
+     * live here moved to in_menu.c as a LONG-press (binding collision with
+     * chunk 3's menu toggle — see reports/09-m3-integration.md and the
+     * header comment above WebXRComfort_Recenter). */
 
     s_prevButtons[WEBXR_HAND_LEFT]  = leftTrackedRemoteState_new.Buttons;
     s_prevButtons[WEBXR_HAND_RIGHT] = rightTrackedRemoteState_new.Buttons;
@@ -253,7 +251,8 @@ void WebXRComfort_Init(void)
 {
     Cmd_AddCommand("vr_recenter", WebXRComfort_Recenter_f,
                    "recenter view (yaw + position) and re-latch standing height; "
-                   "also bound to the off-hand thumbstick click in VR");
+                   "also bound to LONG-pressing the off-hand thumbstick in VR "
+                   "(short press = menu)");
     printf("[webxr] comfort/calibration module initialised\n");
 }
 
