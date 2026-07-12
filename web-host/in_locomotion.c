@@ -45,7 +45,7 @@
 #include <emscripten.h>
 
 #include "quakedef.h" /* vec2_t/vec3_t, matrix4x4_t, Matrix4x4_*, cl, cvar_t, YAW/PITCH/ROLL, Con_Printf, dpsnprintf, Cmd_AddCommand */
-#include "keys.h"     /* K_SHIFT, K_MOUSE1, K_SPACE */
+#include "keys.h"     /* K_MOUSE1, K_SPACE */
 
 #include "webxr_input.h"
 #include "webxr_bridge.h" /* WebXRBridge_QuatToYawPitchRoll — the same ported
@@ -60,6 +60,11 @@
  * cvars, which client.h does not declare) ---- */
 extern cvar_t cl_righthanded;
 extern cvar_t cl_walkdirection;
+
+/* kbutton state probes for the emulated-test harness (client.h declares
+ * in_speed; in_down is defined in cl_input.c:56 without a header entry) */
+extern kbutton_t in_speed;
+extern kbutton_t in_down;
 
 /* client.h already declares: cl_movementspeed, cl_movespeedkey, vr_yawmode,
  * cl_comfort (extern cvar_t). cl (client_state_t) via quakedef.h->client.h. */
@@ -153,6 +158,46 @@ static double s_locoLastMs = -1.0;
  * as in_weapon.c/in_menu.c: the shared rightTrackedRemoteState_old is not
  * used for edges by this module to avoid racing the other chunks' copies) */
 static WebXRRemoteState s_locoPrevRight;
+
+/* Held-key bookkeeping (headset-QA round 2). The old plain edge-forwarding
+ * had a stuck-key hole: a button pressed IN-GAME and released WHILE THE MENU
+ * WAS UP never got its key-up (the whole edge call was gated behind
+ * !VR_UseScreenLayer(), so the release edge was swallowed and e.g. +jump
+ * stayed down until session exit). Presses are still gated to in-game
+ * frames like the fork's bigScreen==0 branch, but a release ALWAYS lets go
+ * of a key this module is holding. */
+static bool s_jumpHeld; /* right A  -> K_SPACE (+jump) */
+static bool s_duckHeld; /* right B  -> 'c' (+movedown) + artificial-crouch eye offset */
+static bool s_runHeld;  /* off-hand trigger -> direct +speed/-speed (see below) */
+
+/* =====================================================================
+ * Duck (headset-QA round 2, item 1). Vanilla Quake has no crouch move —
+ * cl_input.c:1881's cmd.crouch is DP6/7-protocol only ("FIXME: ... Q1
+ * cannot crouch") and the fork never bound one (its only "duck" was the
+ * PHYSICAL one: view.c:929 lowers the eye by hmdPosition[1]-playerHeight).
+ * So the port's duck button reproduces exactly what physically crouching
+ * gives you, without the knees:
+ *   - an EYE OFFSET (meters) ramped in/out while held, subtracted from the
+ *     reported head Y (webxr_bridge.c VR_SetHMDPosition) AND from both
+ *     controllers' raw pose Ys (webxr_input.c) so the view-relative weapon
+ *     math (controller minus head) and two-handed stabilization are
+ *     unaffected — the gun ducks with you;
+ *   - the 'c' key (+movedown, bound by main_web.c's init binds), which adds
+ *     the engine-true half: swim DOWN while in water. (K_CTRL — DP's
+ *     conventional duck key — is deliberately NOT used: main_web.c binds
+ *     CTRL to +attack for flatscreen parity, and rebinding it would turn
+ *     every VR duck into gunfire.)
+ * 0.45 m matches a real standing->crouching eye drop (~12 Quake units at
+ * the default vr_worldscale 26.25); the 3 m/s ramp reaches it in ~150 ms —
+ * fast enough to dodge with, no instant vertical teleport. */
+#define DUCK_EYE_OFFSET_M 0.45f
+#define DUCK_RAMP_M_PER_S 3.0f
+static float s_duckEyeOffset; /* current ramped value, meters */
+
+float WebXRLoco_GetEyeOffset(void)
+{
+    return s_duckEyeOffset;
+}
 
 static void WebXRLoco_DebugTick(void); /* below (needs EM_JS) */
 
@@ -252,14 +297,60 @@ void WebXRLoco_Update(void)
          * K_SPACE, the fork's in-game else-branch of the bigScreen split
          * (QuakeQuest_OpenXR.c:863-866). Was never ported by any chunk:
          * chunk 3 owns A only WHILE the menu is up (A = K_ENTER, fork
-         * :856-858) and no other chunk touched A in-game. Gated by the same
-         * 2D-UI predicate the fork used (bigScreen -> VR_UseScreenLayer,
-         * which also covers demo/console frames). The fork's in-game B
-         * binding is explicitly "//Unused" (:869-874) — nothing to port.
-         * K_SPACE is bound to +jump by main_web.c's init binds. */
-        if (!VR_UseScreenLayer())
-            LocoHandleButtonEdge(&rightTrackedRemoteState_new, &s_locoPrevRight,
-                                 xrButton_A, K_SPACE);
+         * :856-858) and no other chunk touched A in-game. Press gated by the
+         * same 2D-UI predicate the fork used (bigScreen ->
+         * VR_UseScreenLayer, which also covers demo/console frames); the
+         * RELEASE is honored in any mode (headset-QA round 2 stuck-key fix —
+         * see the s_jumpHeld comment above). K_SPACE is bound to +jump by
+         * main_web.c's init binds. */
+        {
+            bool inGame = !VR_UseScreenLayer();
+            bool aNow = (rightTrackedRemoteState_new.Buttons & xrButton_A) != 0;
+            bool aWas = (s_locoPrevRight.Buttons & xrButton_A) != 0;
+            if (aNow && !aWas && inGame && !s_jumpHeld)
+            {
+                QC_KeyEvent(1, K_SPACE, 0);
+                s_jumpHeld = true;
+            }
+            else if (!aNow && s_jumpHeld)
+            {
+                QC_KeyEvent(0, K_SPACE, 0);
+                s_jumpHeld = false;
+            }
+
+            /* WEBXR-PORT headset-QA round 2 (item 1): DUCK — right-hand B,
+             * hold-style. The fork's in-game B was explicitly "//Unused"
+             * (:869-874), so B was free; see the DUCK block comment above
+             * for what the binding does ('c' = +movedown + the
+             * artificial-crouch eye offset) and why not K_CTRL. While the
+             * menu is up, B stays chunk 3's (K_ESCAPE = back, in_menu.c) —
+             * the in-game gate keeps the two from overlapping, and the
+             * release-anywhere rule below un-ducks cleanly if the menu
+             * opens mid-duck. */
+            bool bNow = (rightTrackedRemoteState_new.Buttons & xrButton_B) != 0;
+            bool bWas = (s_locoPrevRight.Buttons & xrButton_B) != 0;
+            if (bNow && !bWas && inGame && !s_duckHeld)
+            {
+                QC_KeyEvent(1, 'c', 0);
+                s_duckHeld = true;
+            }
+            else if (!bNow && s_duckHeld)
+            {
+                QC_KeyEvent(0, 'c', 0);
+                s_duckHeld = false;
+            }
+        }
+    }
+
+    /* duck eye-offset ramp (meters; consumed next frame by webxr_bridge.c's
+     * VR_SetHMDPosition call and webxr_input.c's raw-pose adjust) */
+    {
+        float target = s_duckHeld ? DUCK_EYE_OFFSET_M : 0.0f;
+        float step = DUCK_RAMP_M_PER_S * (frameMs / 1000.0f);
+        if (s_duckEyeOffset < target)
+            s_duckEyeOffset = (s_duckEyeOffset + step < target) ? s_duckEyeOffset + step : target;
+        else if (s_duckEyeOffset > target)
+            s_duckEyeOffset = (s_duckEyeOffset - step > target) ? s_duckEyeOffset - step : target;
     }
 
     /* QuakeQuest_OpenXR.c:906-963 — "Left-hand specific stuff": movement
@@ -292,9 +383,36 @@ void WebXRLoco_Update(void)
         /* QuakeQuest_OpenXR.c:953-963 — off-hand run/fire trigger binding,
          * hardcoded to the literal left controller (mirrors the dominant
          * fire/run binding chunk 2 owns on the literal right controller,
-         * QuakeQuest_OpenXR.c:889-899). */
+         * QuakeQuest_OpenXR.c:889-899).
+         *
+         * WEBXR-PORT headset-QA round 2 ROOT-CAUSE FIX (item 2, menu never
+         * opened on the real Quest): run used to be forwarded as a K_SHIFT
+         * key event. keys.c:1815-1839 special-cases SHIFT+ESCAPE as
+         * "toggleconsole" (a desktop rescue feature) BEFORE any keydest
+         * dispatch — so whenever the run trigger was held (which is most of
+         * the time in actual play, by the SAME hand whose thumb clicks the
+         * menu stick), the menu gesture's synthesized K_ESCAPE toggled the
+         * CONSOLE instead of the menu. Reproduced under IWER by holding the
+         * trigger during the click (test/m4-qa2-test.mjs "shift-escape
+         * trap"); emulated suites had always clicked with an idle trigger,
+         * which is why this only surfaced on-device. Fix: drive the +speed
+         * button command directly (KeyDown/KeyUp's console-typed path —
+         * exactly what the SHIFT bind executed), leaving keydown[K_SHIFT]
+         * untouched so no controller input can ever shift-modify a key. */
         if (cl_righthanded.integer)
-            LocoHandleButtonEdge(left, &leftTrackedRemoteState_old, xrButton_Trigger, K_SHIFT);   /* Run */
+        {
+            bool tNow = (left->Buttons & xrButton_Trigger) != 0;
+            if (tNow && !s_runHeld)
+            {
+                Cbuf_AddText("+speed\n");
+                s_runHeld = true;
+            }
+            else if (!tNow && s_runHeld)
+            {
+                Cbuf_AddText("-speed\n");
+                s_runHeld = false;
+            }
+        }
         else
             LocoHandleButtonEdge(left, &leftTrackedRemoteState_old, xrButton_Trigger, K_MOUSE1);  /* Fire */
 
@@ -325,14 +443,39 @@ void WebXRLoco_Update(void)
 }
 
 /* Session teardown: release anything this module may be holding down so it
- * can't leak into flatscreen (K_SPACE = jump edge above; K_SHIFT = the
- * off-hand run trigger, held-across-exit case). Called from
+ * can't leak into flatscreen (K_SPACE = jump, 'c' = duck, +speed = the
+ * off-hand run trigger, held-across-exit cases). Called from
  * WebXRInput_Reset alongside IN_Weapon_SessionEnd. */
 void WebXRLoco_SessionEnd(void)
 {
     QC_KeyEvent(0, K_SPACE, 0);
-    QC_KeyEvent(0, K_SHIFT, 0);
+    QC_KeyEvent(0, 'c', 0);
+    if (s_runHeld)
+        Cbuf_AddText("-speed\n");
+    s_jumpHeld = false;
+    s_duckHeld = false;
+    s_runHeld = false;
+    s_duckEyeOffset = 0.0f; /* never leak a crouched eye into the next session */
     memset(&s_locoPrevRight, 0, sizeof(s_locoPrevRight));
+}
+
+/* =====================================================================
+ * Test probe (same convention as in_weapon.c's IN_Weapon_Probe / the
+ * in_comfort.c debug hooks: a small kept-in-tree surface so the emulated
+ * suites assert on real C-side state instead of scraping console text).
+ * ===================================================================== */
+EMSCRIPTEN_KEEPALIVE
+double WebXRLoco_Probe(int what)
+{
+    switch (what)
+    {
+    case 0: return (double)s_duckEyeOffset;          /* meters */
+    case 1: return (in_down.state  & 1) ? 1.0 : 0.0; /* +movedown active ('c' chain) */
+    case 2: return s_duckHeld ? 1.0 : 0.0;
+    case 3: return (in_speed.state & 1) ? 1.0 : 0.0; /* +speed active (run chain) */
+    case 4: return s_jumpHeld ? 1.0 : 0.0;
+    }
+    return -1.0;
 }
 
 /* =====================================================================

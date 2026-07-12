@@ -156,6 +156,25 @@ void WebXRInput_Update(double nowMs)
     webxr_get_controller_state(WEBXR_HAND_LEFT,  &webxr_controllers[WEBXR_HAND_LEFT]);
     webxr_get_controller_state(WEBXR_HAND_RIGHT, &webxr_controllers[WEBXR_HAND_RIGHT]);
 
+    /* WEBXR-PORT headset-QA round 2 (duck): lower both controllers' raw
+     * pose Ys by the artificial-crouch eye offset — the head Y is lowered
+     * by the same amount in webxr_bridge.c (VR_SetHMDPosition call), so the
+     * controller-minus-head weapon math and two-handed stabilization see an
+     * unchanged relative pose and the gun ducks with the view. Applied at
+     * the snapshot so BOTH views (raw webxr_controllers and the TBXR-
+     * compatible state built below) stay consistent. */
+    {
+        float eyeOff = WebXRLoco_GetEyeOffset();
+        if (eyeOff != 0.0f)
+        {
+            for (int h = 0; h < WEBXR_HAND_COUNT; ++h)
+            {
+                webxr_controllers[h].aimPosition[1]  -= eyeOff;
+                webxr_controllers[h].gripPosition[1] -= eyeOff;
+            }
+        }
+    }
+
     float dt = frameMs / 1000.0f;
     BuildHandState(WEBXR_HAND_LEFT,  &webxr_controllers[WEBXR_HAND_LEFT],
                    &leftTrackedRemoteState_new,  &leftRemoteTracking_new,  dt);
@@ -175,7 +194,7 @@ static void WebXRInput_OverlaySessionEnded(void); /* below (needs EM_JS) */
 void WebXRInput_Reset(void)
 {
     IN_Weapon_SessionEnd(); /* WEBXR-PORT M3-weapon: release held keys, restore 3DoF */
-    WebXRLoco_SessionEnd();  /* WEBXR-PORT M3-loco: release jump (A) / run (K_SHIFT) */
+    WebXRLoco_SessionEnd();  /* WEBXR-PORT M3-loco: release jump (A) / duck (B) / run (+speed) */
     WebXRInput_OverlaySessionEnded();
     memset(webxr_controllers, 0, sizeof(webxr_controllers));
     memset(&leftTrackedRemoteState_new,  0, sizeof(leftTrackedRemoteState_new));

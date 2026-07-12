@@ -13,10 +13,11 @@
  *       toggles the menu and does NOT recenter; LONG press (>= 600 ms,
  *       in-game) recenters (with a haptic confirm on the off hand) and does
  *       NOT toggle the menu.
- *  (2d) quicksave (X) -> weapon flick -> quickload (Y) mid-game with the
- *       weapon aimed and the TRIGGER HELD ACROSS THE LOAD: saved state
- *       restores, no stuck +attack / haptics after release, controller aim
- *       still drives gunangles.
+ *  (2d) quicksave (keyboard F6; the X binding was removed in headset-QA
+ *       round 2) -> weapon flick -> quickload (F9) mid-game with the weapon
+ *       aimed and the TRIGGER HELD ACROSS THE LOAD: saved state restores,
+ *       no stuck +attack / haptics after release, controller aim still
+ *       drives gunangles.
  *
  * Prereqs: merged build served on 8090 (node web/serve.mjs 8090 from the
  * webxr-port root). Env overrides: see m3-input-test.mjs header.
@@ -194,12 +195,14 @@ await page.evaluate(() => {
 await sleep(600);
 check('2d controller aim active before save', await probe(P.AIMACT) === 1);
 
+/* QA round 2: X/Y quicksave/quickload bindings are REMOVED (accidental
+ * save/load veto) — drive the same engine path via the keyboard F6/F9
+ * binds from the shareware default.cfg instead (m4-qa2-test.mjs and
+ * m3-comfort-test.mjs own the "X/Y are inert" assertions). */
 const wSaved = await probe(P.WEAPON);
-await ctrl('left', 'updateButtonValue', 'x-button', 1.0);
-await sleep(500);
-await ctrl('left', 'updateButtonValue', 'x-button', 0.0);
-await sleep(800);
-console.log('# quicksaved with weapon=' + wSaved);
+await page.keyboard.press('F6'); /* "save quick" */
+await sleep(1000);
+console.log('# quicksaved (F6) with weapon=' + wSaved);
 
 /* change weapon with the chunk-2 stick flick (cross-chunk path itself) */
 await ctrl('right', 'updateAxes', 'thumbstick', 0, 0.9); /* stick down -> '/' impulse 10 */
@@ -210,12 +213,10 @@ const wChanged = await probe(P.WEAPON);
 check('2d weapon flick changed the weapon post-menu/recenter interactions',
   wChanged !== wSaved, `${wSaved} -> ${wChanged}`);
 
-/* quickload with the fire trigger HELD across the load */
+/* quickload (F9) with the fire trigger HELD across the load */
 await ctrl('right', 'updateButtonValue', 'trigger', 1.0);
 await sleep(300);
-await ctrl('left', 'updateButtonValue', 'y-button', 1.0);
-await sleep(600);
-await ctrl('left', 'updateButtonValue', 'y-button', 0.0);
+await page.keyboard.press('F9'); /* "load quick" */
 /* wait for the load to finish (signon cycles back to 4, player alive) */
 await sleep(1200);
 await page.waitForFunction(

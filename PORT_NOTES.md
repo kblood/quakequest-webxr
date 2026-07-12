@@ -135,27 +135,35 @@ menu/console/demo is up.
 | Input | Action | Owner |
 |---|---|---|
 | Dominant (R) trigger | fire (`+attack`) | in_weapon |
-| Off-hand (L) trigger | run (`+speed`); fire when left-handed | in_locomotion |
+| Off-hand (L) trigger | run — direct `+speed`/`-speed` button commands, **not** a K_SHIFT key event (QA-round-2 menu root-cause fix, see below); fire when left-handed | in_locomotion |
 | Right A (in-game) | jump (K_SPACE, fork :863-866; headset-QA bug-1 fix — was unported) | in_locomotion |
-| Right B (in-game) | *nothing* — explicitly `//Unused` in the fork (:869-874) | — |
+| Right B (in-game, hold) | duck — `'c'` (+movedown, swim down) + 0.45 m artificial-crouch eye offset ramped over ~150 ms, applied to head AND controller Ys (QA round 2 item 1) | in_locomotion |
+| **Left X (press)** | **menu toggle (PRIMARY)** — K_ESCAPE dn+up; opens in-game, back/close while menu is up (QA round 2 item 2) | in_menu |
+| Left Y | **unbound** — reserved; anything placed here must be harmless (never destructive/state-changing) | — |
 | Dominant (R) thumbstick click | laser-sight cycle | in_weapon |
-| Off-hand (L) thumbstick click SHORT (<600 ms) | menu toggle (K_ESCAPE dn+up on release) | in_menu |
+| Off-hand (L) thumbstick click SHORT (<600 ms) | menu toggle (secondary; K_ESCAPE dn+up on release) | in_menu |
 | Off-hand (L) thumbstick click LONG (≥600 ms, in-game) | recenter + haptic confirm | in_menu → in_comfort |
 | Right stick Y flick (±0.7) | weapon prev/next (`/`=impulse 10, `#`=impulse 12, binds injected by IN_Weapon_Init) | in_weapon |
 | Right stick X | snap/stick turn (vr_yawmode) | in_locomotion |
 | Left stick | smooth locomotion (deadzone+curve) | in_locomotion |
 | Off-hand grip + hands <0.5 m | two-handed stabilization | in_weapon |
-| Left X / Y (always physical left) | quicksave / quickload | in_comfort |
 | Both sticks + A/B while menu up | d-pad nav / select / back | in_menu |
 
-Deliberate deviations from the fork's HandleInput_Default, re-audited for the
-bug-1 fix (headset QA 2026-07-12): the fork's `canUseQuickSave` is never set
-true anywhere in its tree, so its X/Y quicksave/quickload path was DEAD CODE
-(X = god-mode debug, Y = VR text-input toggle in the shipped build); the port
-enables the quicksave path on purpose. The fork's thumbstick VR text-input
-keyboard (`textInput` mode, :650-744) is not ported — browser text entry can
-use the real keyboard, and Y is quickload here. With the jump fix above,
-every LIVE in-game binding of the fork now has a port-side owner.
+**No controller button saves or loads a game** (QA round 2 item 3): the M3
+X/Y quicksave/quickload bindings (a deliberate "fix" of the fork's dead
+`canUseQuickSave` code, :965-983) were removed after real-headset QA —
+accidental face-button presses silently destroyed progress. Save/load stay
+reachable via the in-VR menu (d-pad nav) and keyboard F6/F9 (shareware
+default.cfg) on flatscreen.
+
+Deliberate deviations from the fork's HandleInput_Default: the fork's
+thumbstick VR text-input keyboard (`textInput` mode, :650-744) is not ported
+— browser text entry can use the real keyboard. The fork had NO duck binding
+at all (its only "duck" was physically crouching — view.c:929); right B duck
+is a port addition on the fork's explicitly `//Unused` button. Duck uses the
+`'c'` key (+movedown), NOT DarkPlaces' conventional K_CTRL, because
+main_web.c binds CTRL to +attack for flatscreen parity. With these, every
+LIVE in-game binding of the fork has a port-side owner.
 
 ### Integration fixes (found only in the merged build)
 
@@ -326,6 +334,86 @@ eyes lit and stereo-distinct on every entry) in three UA flavors: plain IWER
 (`canvas`), IWER + real layer framebuffer shim (`layerfb`, device-like), and
 IWER + original-spec throwing rAF shim (`endquirk`, reproduces this bug —
 hung at exit#1 pre-fix, 72/72 checks green post-fix, 0 console errors).
+
+## Headset QA round 2 (2026-07-12) — bug fixes
+
+Three items from the second real-Quest QA pass. The binding-map section
+above already reflects all of them.
+
+### Item 2 (the big one): in-game menu never opened on-device (RESOLVED)
+
+**Root cause — the SHIFT+ESCAPE console rescue branch, not a gamepad
+mapping bug.** The menu gesture synthesizes K_ESCAPE key events; keys.c
+(:1815-1839) special-cases `keydown[K_SHIFT] && K_ESCAPE` as
+"toggleconsole" BEFORE any keydest dispatch (a desktop recover-from-empty-
+bindmap feature). The port forwarded the off-hand RUN trigger as a K_SHIFT
+key event — so whenever run was held (most of real play, by the SAME left
+hand whose thumb clicks the menu stick), the menu press toggled the
+CONSOLE instead (and the next press toggled it away again): from inside
+the HMD, "the menu cannot be opened". Reproduced under IWER by simply
+holding the trigger during the click — every emulated suite had clicked
+with an idle trigger, which is why sim passed and the device failed.
+The gamepad index mapping was verified NOT guilty: IWER's `metaQuest3`
+gamepad config is recorded from real devices (buttons[3]=stick click,
+buttons[4]/[5]=X·A/Y·B, axes[2,3]=stick, placeholder slots included) and
+matches webxr_input.c's constants and lib/webxr PATCH #12's marshaling
+(copies 8 buttons/4 axes) exactly.
+
+Fixes (both):
+- **in_locomotion.c**: run now drives `+speed`/`-speed` button commands
+  directly (identical engine effect — that's what the SHIFT bind executed)
+  without touching `keydown[K_SHIFT]`, so no controller input can ever
+  shift-modify a synthesized key.
+- **in_menu.c**: left X (freed by item 3) = PRIMARY menu toggle,
+  edge-triggered on PRESS (instant feedback), K_ESCAPE dn+up — opens
+  in-game, back/close while the menu is up. The stick-click short-press
+  stays as secondary; long-press recenter unchanged. (Secondary
+  contributor kept in mind: the release-fired <600 ms window gives zero
+  while-held feedback, and deliberate presses on stiff real stick-clicks
+  can cross 600 ms and silently recenter instead — with X as primary this
+  is no longer load-bearing.)
+
+Also fixed while in there: a press-gated-edge stuck-key hole — a jump (A)
+held across a menu OPEN never got its K_SPACE release (the whole edge call
+was gated on `!VR_UseScreenLayer()`). Presses are still in-game-only;
+releases are now honored in any mode (`s_jumpHeld`/`s_duckHeld` latches).
+
+### Item 1: duck binding (right B, hold)
+
+Fork parity checked: the fork never bound duck/crouch (vanilla Quake
+cannot crouch — cl_input.c:1881's cmd.crouch is DP6/7-only; the fork's
+only "duck" was physically crouching, view.c:929). Right B (explicitly
+`//Unused` in the fork) is now hold-to-duck, reproducing what a physical
+crouch gives: a 0.45 m eye offset (≈12 units at default worldscale)
+ramped in/out at 3 m/s, subtracted from the head Y (webxr_bridge.c
+VR_SetHMDPosition — playerHeight keeps latching from the RAW Y so a
+mid-duck menu flip can't pollute the standing baseline; in_comfort's
+recenter re-latch compensates likewise) and from both controllers' raw
+pose Ys (webxr_input.c — keeps controller-minus-head weapon math intact,
+the gun ducks with you). Plus the `'c'` key (+movedown) for the
+engine-true swim-down half. NOT K_CTRL: main_web.c binds CTRL=+attack for
+flatscreen, rebinding it would turn VR ducks into gunfire. Held keys
+released on session exit (WebXRLoco_SessionEnd). Test probe:
+`WebXRLoco_Probe` (0=eye offset m, 1=+movedown active, 2=duckHeld,
+3=+speed active, 4=jumpHeld).
+
+### Item 3: X/Y quicksave/quickload REMOVED
+
+See the binding-map note ("No controller button saves or loads a game").
+in_comfort.c's WebXRComfort_QuickSaveLoad and its per-hand button
+snapshot are deleted; left X → menu toggle, left Y → unbound (must stay
+harmless if ever assigned).
+
+Regression harness: `web-host/test/m4-qa2-test.mjs` — realistic-gamepad
+shim (device-shaped 7-button/4-axis arrays with PLACEHOLDER slots and
+numeric axes[0,1], driven directly, independent of IWER's controller API)
++ the shift-escape trap reproduction (fails pre-fix, menu opens post-fix)
++ X menu open/close (in-game and while menu up) + B duck (probe chain:
+key → bind → kbutton, eye offset ramp up/down) + X/Y-do-not-save/load
+checks. m3-loco-test gained duck coverage; m3-comfort-test asserts X/Y
+are inert (save/load round-trip moved to typed console commands);
+m3-integration 2d drives quicksave/quickload via keyboard F6/F9 instead
+of X/Y.
 
 ## PWA — installable + offline (2026-07-12)
 

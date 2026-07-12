@@ -58,9 +58,21 @@ void WebXRLoco_OnSessionStart(void);
 void WebXRLoco_Update(void);
 
 /* Session teardown (called from WebXRInput_Reset on session end): releases
- * keys this module may be holding down — K_SPACE (jump, right-hand A held
- * across the exit) and K_SHIFT (off-hand run trigger) — and clears the
+ * keys/buttons this module may be holding down — K_SPACE (jump, right-hand
+ * A held across the exit), 'c' (duck, right-hand B) and the +speed run
+ * state (off-hand trigger) — zeroes the duck eye offset and clears the
  * private edge-detection state. */
 void WebXRLoco_SessionEnd(void);
+
+/* Artificial-crouch eye offset in METERS (>= 0; 0 when not ducking).
+ * Headset-QA round 2 duck binding (right B, hold): consumers subtract this
+ * from the XR-reported Y so the whole body ducks coherently —
+ *   - webxr_bridge.c VR_SetHMDPosition: reported head Y (view height;
+ *     playerHeight latching keeps using the RAW standing Y),
+ *   - webxr_input.c WebXRInput_Update: both controllers' raw grip/aim pose
+ *     Ys (keeps controller-minus-head weapon math unaffected).
+ * Constant within a frame: the ramp advances in WebXRLoco_Update, which
+ * runs AFTER both consumers have read it for the current frame. */
+float WebXRLoco_GetEyeOffset(void);
 
 #endif

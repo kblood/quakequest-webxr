@@ -41,7 +41,7 @@
 #include "in_menu.h"       /* WEBXR-PORT M3-hud: menu toggle + nav keys */
 #include "vr_menu_quad.h"  /* WEBXR-PORT M3-hud: world-anchored 2D-UI quad */
 #include "in_locomotion.h" /* WEBXR-PORT M3-loco: chunk 1 (locomotion/turning) */
-#include "in_comfort.h"    /* WEBXR-PORT M3-comfort: recenter/quicksave/bullet-time */
+#include "in_comfort.h"    /* WEBXR-PORT M3-comfort: recenter/bullet-time */
 
 /* ---- engine entry points / externs (darkplaces side) ---- */
 void QC_BeginFrame(bool stopTime);            /* vid_android.c */
@@ -328,24 +328,34 @@ void VR_SetHMDOrientation(float pitch, float yaw, float roll)
 
 /* Ported from QuakeQuest_OpenXR.c:195-216. Position is stored RAW in
  * XR axis order (x=right, y=up, z=backward) — consumers in view.c remap
- * per-field at the read site (design doc §4.3); do NOT remap here. */
+ * per-field at the read site (design doc §4.3); do NOT remap here.
+ *
+ * WEBXR-PORT headset-QA round 2 (duck): the artificial-crouch eye offset
+ * (in_locomotion.c, right-B hold) is subtracted from the reported Y HERE,
+ * after the playerHeight latch reads the RAW value — so view.c:929's
+ * (hmdPosition[1] - playerHeight) dips while ducked, but the standing
+ * baseline can never get polluted by a mid-duck screen-layer flip (the
+ * latch fires on every menu open/close). Controller Ys get the same
+ * subtraction in webxr_input.c. */
 void VR_SetHMDPosition(float x, float y, float z)
 {
+    float yAdj = y - WebXRLoco_GetEyeOffset();
+
     s_positionDelta[0] = s_worldPosition[0] - x;
-    s_positionDelta[1] = s_worldPosition[1] - y;
+    s_positionDelta[1] = s_worldPosition[1] - yAdj;
     s_positionDelta[2] = s_worldPosition[2] - z;
     s_worldPosition[0] = x;
-    s_worldPosition[1] = y;
+    s_worldPosition[1] = yAdj;
     s_worldPosition[2] = z;
 
     hmdPosition[0] = x;
-    hmdPosition[1] = y;
+    hmdPosition[1] = yAdj;
     hmdPosition[2] = z;
 
     if (s_useScreenPrev != VR_UseScreenLayer())
     {
         s_useScreenPrev = VR_UseScreenLayer();
-        playerHeight = y;
+        playerHeight = y; /* RAW standing height, duck-independent */
     }
 }
 
@@ -574,10 +584,10 @@ static void WebXRBridge_OnXRFrame(void *userData, int timeMs,
      * dispatched from WebXRInput_Update above). Head aim (M2 behavior) stays
      * as the fallback for frames with no located controller aim pose — the
      * fork sends gunangles, not viewangles, to the server (cl_input.c:1845). */
-    /* WEBXR-PORT M3-comfort: recenter/quicksave/bullet-time — needs this
-     * frame's fresh button state (just updated above) and must run before
-     * QC_BeginFrame so its console commands (Cbuf_InsertText) and cvar
-     * writes land this frame (see in_comfort.h). */
+    /* WEBXR-PORT M3-comfort: bullet-time (recenter fires from in_menu.c's
+     * long-press) — needs this frame's fresh state (just updated above) and
+     * must run before QC_BeginFrame so its cvar writes land this frame (see
+     * in_comfort.h). */
     WebXRComfort_Update();
 
     if (!IN_Weapon_AimActive())

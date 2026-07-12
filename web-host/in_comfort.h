@@ -4,11 +4,7 @@
  * Ports reports/06-vr-gameplay-map.md §4 (Comfort & misc) + the recenter/
  * height-calibration item from §4's table, decomposed as chunk 4 in §5.
  * Everything here is self-contained: it reads the M3 input foundation's
- * per-hand state (webxr_input.h) directly and keeps its OWN previous-frame
- * button snapshot rather than relying on the shared *_old globals (those are
- * documented as "gameplay code copies new->old itself" — since chunks 1/2/3
- * land on separate branches with no fixed merge order, this module doesn't
- * assume any other chunk's code has run yet).
+ * per-hand state (webxr_input.h) directly.
  *
  * Covers:
  *  - Recenter/height calibration: lib/webxr PATCH #14 (webxr_recenter(),
@@ -23,9 +19,11 @@
  *    Resolution: in_menu.c owns the whole off-hand-click gesture now —
  *    short press = menu toggle, LONG press (>= 600 ms, in-game only) calls
  *    WebXRComfort_Recenter(). This module no longer reads the click at all.
- *  - Quicksave/quickload (physical left X/Y) — FIXED dead-code port of
- *    QuakeQuest_OpenXR.c:965-983 (canUseQuickSave was hardcoded false;
- *    reports/06 flagged this and recommended enabling it for the web port).
+ *  - Quicksave/quickload (physical left X/Y): REMOVED in headset-QA
+ *    round 2 (was a deliberate dead-code fix of QuakeQuest_OpenXR.c:965-983;
+ *    real-device QA vetoed save/load on bare face buttons — accidental
+ *    presses destroy progress). No controller button saves or loads;
+ *    menu-based save/load remains. See the block comment in in_comfort.c.
  *  - Bullet-time/slow-mo speed computation — port of
  *    QuakeQuest_OpenXR.c:1011-1021 (engine-side consumption in cl_input.c is
  *    untouched/already-compiled).

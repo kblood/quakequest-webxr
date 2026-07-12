@@ -276,6 +276,32 @@ console.log(`jump: ground z=${zGround.toFixed(1)} peak z=${zPeak.toFixed(1)}`);
 check('right A jumps in-game (origin z rose > 8 units)', zPeak > zGround + 8,
   `ground=${zGround.toFixed(1)} peak=${zPeak.toFixed(1)}`);
 
+// =====================================================================
+// 6) Duck: right-hand B (hold) -> 'c' key (+movedown) + artificial-crouch
+// eye offset (headset-QA round 2 item 1). Probe surface: WebXRLoco_Probe
+// (0 = eye offset meters, 1 = in_down.state&1 i.e. +movedown active,
+// 2 = duckHeld). Verifies the full chain key -> bind -> kbutton plus the
+// offset ramp reaching 0.45 m and returning to 0 on release.
+// =====================================================================
+const locoProbe = (i) => page.evaluate((i) => Module._WebXRLoco_Probe(i), i);
+check('duck: inert before press (offset 0, +movedown off)',
+  (await locoProbe(0)) === 0 && (await locoProbe(1)) === 0);
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('b-button', 1.0));
+await sleep(500); // several frames + the ~150 ms ramp
+const duckOff = await locoProbe(0);
+const duckMoveDown = await locoProbe(1);
+check('duck: B hold engages +movedown (key \'c\' chain)', duckMoveDown === 1);
+check('duck: eye offset ramped to 0.45 m', Math.abs(duckOff - 0.45) < 0.01,
+  'offset=' + duckOff);
+// the lowered eye must be visible in the reported controller poses too
+// (aim Y in the input overlay drops by ~the offset) — sanity-checked in
+// m4-qa2-test.mjs with a fixed pose; here just release and verify cleanup.
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('b-button', 0.0));
+await sleep(500);
+check('duck: release lets go of +movedown', (await locoProbe(1)) === 0);
+check('duck: eye offset ramps back to 0', (await locoProbe(0)) === 0,
+  'offset=' + await locoProbe(0));
+
 await page.screenshot({ path: SCREENSHOT });
 console.log('# screenshot: ' + SCREENSHOT);
 

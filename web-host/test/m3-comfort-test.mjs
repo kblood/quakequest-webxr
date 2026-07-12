@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /*
  * m3-comfort-test.mjs — emulated-XR verification of M3 chunk 4
- * (comfort/calibration: recenter, quicksave/quickload, bullet-time,
- * vr_worldscale). Same IWER/puppeteer harness pattern as m3-input-test.mjs
- * (see its header comment).
+ * (comfort/calibration: recenter, bullet-time, vr_worldscale) plus the
+ * headset-QA round 2 regression that X/Y must NOT quicksave/quickload
+ * (bindings removed; X is the menu toggle now, Y is unbound). Same
+ * IWER/puppeteer harness pattern as m3-input-test.mjs (see its header).
  *
  * Does NOT test laser-sight toggle or weapon-switch stick-flick: both were
  * implemented here originally, then removed after cross-checking sibling
@@ -186,7 +187,12 @@ check('vr_recenter console command fires the recenter path', sawRecenterLog(mark
 // reports/08d-comfort.md; both are chunk 2's (verified in
 // reports/08b-weapon.md).
 
-// ================= Test D: quicksave / quickload round-trip =================
+// ================= Test D: X/Y must NOT save/load (QA round 2 item 3) ==
+// The M3 X=quicksave/Y=quickload bindings were REMOVED after real-headset
+// QA (accidental face-button save/load destroys progress). This block
+// proves the buttons are inert for save/load while the engine's own
+// save/load path (typed console commands, i.e. what the menu drives)
+// still round-trips.
 async function typeConsole(cmd) {
   await page.keyboard.press('Backquote');
   await sleep(150);
@@ -197,34 +203,59 @@ async function typeConsole(cmd) {
   await sleep(300);
 }
 
-// left X = quicksave (edge-triggered) — save the starting-loadout weapon
-// as the known-good state.
+// known-good state saved via the engine path (menu-equivalent)
 let w0 = await page.evaluate(() => Module._WebXRComfort_DebugGetActiveWeapon());
-await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('x-button', 1.0));
-await sleep(700);
-await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('x-button', 0.0));
-await sleep(700);
-let wSaved = await page.evaluate(() => Module._WebXRComfort_DebugGetActiveWeapon());
-check('quicksave triggered with the expected starting weapon', wSaved === w0, `${w0} -> ${wSaved}`);
-console.log('# quicksaved with active weapon = ' + wSaved);
+await typeConsole('save quick');
+await sleep(500);
+console.log('# console-saved with active weapon = ' + w0);
 
-// change weapon via a typed console command (decoupled from whichever
-// chunk owns the controller-driven weapon-switch binding) so load has
-// something observable to restore. "impulse 12" empirically cycles
-// shotgun(1) -> axe(4096) on the fresh-game loadout (verified while this
-// module still owned weapon-switch — see reports/08d-comfort.md).
+// change weapon via a typed console command. "impulse 12" empirically
+// cycles shotgun(1) -> axe(4096) on the fresh-game loadout
+// (reports/08d-comfort.md).
 await typeConsole('impulse 12');
 await sleep(300);
 let wChanged = await page.evaluate(() => Module._WebXRComfort_DebugGetActiveWeapon());
-check('weapon changed after save (setup for load assertion)', wChanged !== wSaved, `${wSaved} -> ${wChanged}`);
+check('weapon changed after save (setup for the assertions below)',
+  wChanged !== w0, `${w0} -> ${wChanged}`);
 
-// left Y = quickload (edge-triggered)
+// left Y: must do NOTHING (previously quickload — would restore w0)
 await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('y-button', 1.0));
 await sleep(900);
 await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('y-button', 0.0));
 await sleep(900);
+let wAfterY = await page.evaluate(() => Module._WebXRComfort_DebugGetActiveWeapon());
+check('left Y does NOT quickload (weapon unchanged)', wAfterY === wChanged,
+  `expected ${wChanged}, got ${wAfterY}`);
+
+// left X: now the PRIMARY MENU TOGGLE (in_menu.c) and must NOT save.
+// If X still quicksaved, the slot would now hold wChanged and the final
+// `load quick` below would restore wChanged instead of w0.
+await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('x-button', 1.0));
+await sleep(400);
+await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('x-button', 0.0));
+await sleep(400);
+{
+  const st = await page.evaluate(() => Module._VRMenuQuad_DebugState());
+  check('left X now opens the menu (QA round 2 primary menu binding)',
+    ((st >> 16) & 0xff) === 1, 'probe=0x' + st.toString(16));
+}
+// close it again with X (toggle)
+await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('x-button', 1.0));
+await sleep(400);
+await page.evaluate(() => window.__xrdevice.controllers.left.updateButtonValue('x-button', 0.0));
+await sleep(400);
+{
+  const st = await page.evaluate(() => Module._VRMenuQuad_DebugState());
+  check('left X closes the menu again', ((st >> 16) & 0xff) === 0,
+    'probe=0x' + st.toString(16));
+}
+
+// engine load path still works AND proves X didn't overwrite the slot
+await typeConsole('load quick');
+await sleep(1200);
 let wLoaded = await page.evaluate(() => Module._WebXRComfort_DebugGetActiveWeapon());
-check('quickload restored the saved active weapon', wLoaded === wSaved, `expected ${wSaved}, got ${wLoaded}`);
+check('console `load quick` restored the ORIGINAL save (X did not overwrite it)',
+  wLoaded === w0, `expected ${w0}, got ${wLoaded}`);
 
 await page.screenshot({ path: SCREENSHOT });
 console.log('# screenshot: ' + SCREENSHOT);

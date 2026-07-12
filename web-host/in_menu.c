@@ -3,9 +3,15 @@
  * See in_menu.h for the binding rationale (off-hand thumbstick click = menu).
  *
  * Faithful port of the fork's big-screen branches:
- *  - menu toggle: off-hand thumbstick click -> K_ESCAPE (down+up), the
- *    rebind of the fork's handleTrackedControllerButton(..., xrButton_Enter,
- *    K_ESCAPE) (QuakeQuest_OpenXR.c:912-914) — K_ESCAPE down runs togglemenu.
+ *  - menu toggle (PRIMARY, headset-QA round 2): left X press -> K_ESCAPE
+ *    (down+up). The rebind of the fork's handleTrackedControllerButton(...,
+ *    xrButton_Enter, K_ESCAPE) (QuakeQuest_OpenXR.c:912-914) — K_ESCAPE
+ *    down runs togglemenu. Left X became free when QA round 2 removed the
+ *    X/Y quicksave bindings; a plain dedicated button is the reliable path
+ *    the dual-function stick-click gesture (kept below as SECONDARY)
+ *    turned out not to be on the real device.
+ *  - menu toggle (secondary): off-hand thumbstick click -> K_ESCAPE
+ *    (down+up on release), short/long-press split with recenter:
  *    M3 INTEGRATION CHANGE (reports/09-m3-integration.md): chunk 4
  *    (in_comfort.c) independently bound RECENTER to the same off-hand click
  *    — both chunks' reports justified the pick as "the one input the fork
@@ -94,6 +100,28 @@ void IN_Menu_HandleInput(void)
 		s_offClickStartMs = -1.0;
 		s_offClickConsumed = false;
 		return;
+	}
+
+	/* WEBXR-PORT headset-QA round 2 (item 2): PRIMARY menu button — left X,
+	 * edge-triggered on PRESS (immediate feedback), works both to open the
+	 * menu in-game and as back/close while it's up (same K_ESCAPE down+up
+	 * pair the fork's handleTrackedControllerButton forwarded for its Enter
+	 * button). X is always the physical LEFT controller (Touch asymmetry,
+	 * same hardcoding the fork used for X/Y) and was freed by the QA-round-2
+	 * removal of the X/Y quicksave/quickload bindings (in_comfort.c). The
+	 * stick-click gesture below remains as the secondary path. NOTE: the
+	 * on-device reliability fix that makes ANY synthesized K_ESCAPE reach
+	 * the menu is in in_locomotion.c (run is no longer a K_SHIFT key event,
+	 * so keys.c's SHIFT+ESCAPE=console rescue branch can no longer swallow
+	 * these) — see that file's headset-QA round 2 comment. */
+	{
+		bool xNow = (hand[WEBXR_HAND_LEFT]->Buttons & xrButton_X) != 0;
+		bool xWas = (s_prev[WEBXR_HAND_LEFT].Buttons & xrButton_X) != 0;
+		if (xNow && !xWas)
+		{
+			QC_KeyEvent(1, K_ESCAPE, 0);
+			QC_KeyEvent(0, K_ESCAPE, 0);
+		}
 	}
 
 	/* off-hand thumbstick click gesture (rebind of the fork's unavailable

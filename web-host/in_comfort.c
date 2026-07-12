@@ -17,6 +17,7 @@
 
 #include "webxr_input.h"
 #include "in_comfort.h"
+#include "in_locomotion.h"   /* WebXRLoco_GetEyeOffset — duck-aware height re-latch */
 #include "lib/webxr/webxr.h" /* webxr_recenter — PATCH #14 */
 
 /* ---- engine entry points / externs ---- */
@@ -28,13 +29,6 @@ extern cvar_t vr_worldscale;       /* gl_rmain.c:52 — Quake-units-per-real-met
 
 extern float hmdPosition[3];       /* webxr_bridge.c (raw XR head position, meters) */
 extern float playerHeight;         /* main_web.c — standing-height reference (view.c:929) */
-
-/* =====================================================================
- * Per-hand previous-button snapshot (owned entirely by this module — see
- * in_comfort.h header comment for why it doesn't share leftTrackedRemoteState_old
- * / rightTrackedRemoteState_old with other chunks).
- * ===================================================================== */
-static uint32_t s_prevButtons[WEBXR_HAND_COUNT];
 
 /* =====================================================================
  * Recenter / height calibration
@@ -84,8 +78,11 @@ void WebXRComfort_Recenter(void)
          * natural "fix my height" moment as well — "stand up straight and
          * press recenter". The fork never did this (its recenter never
          * touched playerHeight either), but it costs nothing and matches
-         * user expectation for what a recenter button does. */
-        playerHeight = hmdPosition[1];
+         * user expectation for what a recenter button does.
+         * hmdPosition[1] already has the duck eye offset subtracted
+         * (headset-QA round 2); add it back so recentering while the duck
+         * button happens to be held can't lower the standing baseline. */
+        playerHeight = hmdPosition[1] + WebXRLoco_GetEyeOffset();
         SCR_CenterPrint("Recentered");
         Con_Printf("[comfort] recentered (yaw + position; height re-latched to %.1f)\n", playerHeight);
     }
@@ -97,58 +94,22 @@ static void WebXRComfort_Recenter_f(void)
 }
 
 /* =====================================================================
- * Quicksave / quickload — FIX for the fork's dead code.
+ * Quicksave / quickload on X/Y — REMOVED (headset-QA round 2, item 3).
  *
- * QuakeQuest_OpenXR.c:965-983 guards X=quicksave/Y=quickload behind
- * `static bool canUseQuickSave = false;`, never set true anywhere in the
- * tree (reports/06 §1.2) — permanently dead. The active `#else` branch
- * left X unbound in release builds (NDEBUG strips the god-mode/give-all
- * cheat) and Y always toggling the radial text-input keyboard (deferred
- * per reports/06 §1.2 — "recommend deferring/replacing with an HTML input
- * overlay"; not implemented anywhere yet, so Y is free to reclaim here).
- *
- * X and Y are always the physical LEFT controller (Touch controllers are
- * asymmetric — only the left has X/Y, only the right has A/B), so this is
- * hardcoded to leftTrackedRemoteState_new, not handedness-relative, exactly
- * matching the fork's own (also hardcoded-left) dead branch.
- *
- * The engine's own `save`/`load` console commands (host_cmd.c) already
- * gate correctly (Host_Savegame_f: "Can't save - no server running" /
- * "in intermission" / "with a dead player"; Host_Loadgame_f: file-not-found
- * on a first quickload with no prior quicksave) — no extra validity
- * checking needed here, same as the fork relied on implicitly.
- *
- * Two small correctness fixes over the fork while porting:
- *  - `Cbuf_InsertText("load quick")` (fork) was missing the trailing
- *    newline `save quick\n` got; added for consistency (Cbuf_InsertText
- *    tolerates missing newlines, but the fork's own quicksave line shows
- *    the intent).
- *  - The fork's quicksave haptic buzzed `cl_righthanded.integer ? 1 : 2`
- *    (left channel when right-handed, RIGHT channel when left-handed) —
- *    but X is *always* physically left, so the left-handed case buzzed the
- *    hand that didn't press the button. Fixed to always buzz channel 1
- *    (left, matching X's fixed physical location).
+ * The M3-chunk-4 port deliberately "fixed" the fork's dead
+ * canUseQuickSave code (QuakeQuest_OpenXR.c:965-983, guard never set true
+ * — reports/06 §1.2) by making left X = `save quick` and left Y =
+ * `load quick` live. Real-headset QA vetoed it: X/Y sit exactly where the
+ * thumb rests, and an ACCIDENTAL quickload silently discards progress (an
+ * accidental quicksave overwrites the good slot) — state-destroying
+ * actions must not live on bare face buttons. Both bindings are gone; no
+ * controller button may save or load. Save/load remain reachable through
+ * the in-VR menu (d-pad nav, in_menu.c) and the keyboard F6/F9 binds
+ * (shareware default.cfg) on flatscreen.
+ * Left X is reused as the PRIMARY menu toggle (in_menu.c, QA round 2
+ * item 2); left Y is deliberately UNBOUND — if it ever gets a role, it
+ * must be a harmless one (never destructive/state-changing).
  * ===================================================================== */
-static void WebXRComfort_QuickSaveLoad(void)
-{
-    bool xNow  = (leftTrackedRemoteState_new.Buttons & xrButton_X) != 0;
-    bool xPrev = (s_prevButtons[WEBXR_HAND_LEFT] & xrButton_X) != 0;
-    if (xNow && !xPrev)
-    {
-        Cbuf_InsertText("save quick\n");
-        SCR_CenterPrint("Quick Saved");
-        WebXRInput_Vibrate(500, 1 /* left — X is always the physical left controller */, 1.0f);
-    }
-
-    bool yNow  = (leftTrackedRemoteState_new.Buttons & xrButton_Y) != 0;
-    bool yPrev = (s_prevButtons[WEBXR_HAND_LEFT] & xrButton_Y) != 0;
-    if (yNow && !yPrev)
-    {
-        Cbuf_InsertText("load quick\n");
-        SCR_CenterPrint("Quick Load...");
-        WebXRInput_Vibrate(500, 1, 1.0f);
-    }
-}
 
 /* =====================================================================
  * Laser-sight cycle toggle and weapon-switch stick-flick — INTENTIONALLY
@@ -235,16 +196,14 @@ static void WebXRComfort_BulletTime(void)
  * ===================================================================== */
 void WebXRComfort_Update(void)
 {
-    WebXRComfort_QuickSaveLoad();
     WebXRComfort_BulletTime();
 
     /* NOTE: the off-hand thumbstick-click recenter trigger that used to
      * live here moved to in_menu.c as a LONG-press (binding collision with
      * chunk 3's menu toggle — see reports/09-m3-integration.md and the
-     * header comment above WebXRComfort_Recenter). */
-
-    s_prevButtons[WEBXR_HAND_LEFT]  = leftTrackedRemoteState_new.Buttons;
-    s_prevButtons[WEBXR_HAND_RIGHT] = rightTrackedRemoteState_new.Buttons;
+     * header comment above WebXRComfort_Recenter). The X/Y quicksave/
+     * quickload block that used to live here is gone for good — see the
+     * REMOVED comment above. */
 }
 
 void WebXRComfort_Init(void)
