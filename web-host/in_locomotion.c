@@ -166,8 +166,8 @@ static WebXRRemoteState s_locoPrevRight;
  * stayed down until session exit). Presses are still gated to in-game
  * frames like the fork's bigScreen==0 branch, but a release ALWAYS lets go
  * of a key this module is holding. */
-static bool s_jumpHeld; /* right A  -> K_SPACE (+jump) */
-static bool s_duckHeld; /* right B  -> 'c' (+movedown) + artificial-crouch eye offset */
+static bool s_jumpHeld; /* right B  -> K_SPACE (+jump) */
+static bool s_duckHeld; /* right A  -> 'c' (+movedown) + artificial-crouch eye offset */
 static bool s_runHeld;  /* off-hand trigger -> direct +speed/-speed (see below) */
 
 /* =====================================================================
@@ -293,48 +293,49 @@ void WebXRLoco_Update(void)
          * 837-862) is chunk 3's (HUD & Menus) responsibility — not ported
          * here to avoid duplicate/conflicting Key_Event dispatch. */
 
-        /* WEBXR-PORT M3 gap fix (headset QA bug 1): Jump — right-hand A ->
-         * K_SPACE, the fork's in-game else-branch of the bigScreen split
-         * (QuakeQuest_OpenXR.c:863-866). Was never ported by any chunk:
-         * chunk 3 owns A only WHILE the menu is up (A = K_ENTER, fork
-         * :856-858) and no other chunk touched A in-game. Press gated by the
-         * same 2D-UI predicate the fork used (bigScreen ->
-         * VR_UseScreenLayer, which also covers demo/console frames); the
-         * RELEASE is honored in any mode (headset-QA round 2 stuck-key fix —
-         * see the s_jumpHeld comment above). K_SPACE is bound to +jump by
-         * main_web.c's init binds. */
+        /* WEBXR-PORT M3 gap fix (headset QA bug 1) + round-3 swap: Jump —
+         * right-hand B -> K_SPACE (the fork bound jump to A,
+         * QuakeQuest_OpenXR.c:863-866, but user QA preferred jump on the
+         * upper button, so A/B are swapped vs the fork — a deliberate
+         * deviation, see PORT_NOTES binding map). Was never ported by any
+         * chunk: chunk 3 owns A/B only WHILE the menu is up (A = K_ENTER
+         * fork :856-858, B = K_ESCAPE back) and no other chunk touched them
+         * in-game. Press gated by the same 2D-UI predicate the fork used
+         * (bigScreen -> VR_UseScreenLayer, which also covers demo/console
+         * frames); the RELEASE is honored in any mode (headset-QA round 2
+         * stuck-key fix — see the s_jumpHeld comment above). K_SPACE is
+         * bound to +jump by main_web.c's init binds. */
         {
             bool inGame = !VR_UseScreenLayer();
-            bool aNow = (rightTrackedRemoteState_new.Buttons & xrButton_A) != 0;
-            bool aWas = (s_locoPrevRight.Buttons & xrButton_A) != 0;
-            if (aNow && !aWas && inGame && !s_jumpHeld)
+            bool bNow = (rightTrackedRemoteState_new.Buttons & xrButton_B) != 0;
+            bool bWas = (s_locoPrevRight.Buttons & xrButton_B) != 0;
+            if (bNow && !bWas && inGame && !s_jumpHeld)
             {
                 QC_KeyEvent(1, K_SPACE, 0);
                 s_jumpHeld = true;
             }
-            else if (!aNow && s_jumpHeld)
+            else if (!bNow && s_jumpHeld)
             {
                 QC_KeyEvent(0, K_SPACE, 0);
                 s_jumpHeld = false;
             }
 
-            /* WEBXR-PORT headset-QA round 2 (item 1): DUCK — right-hand B,
-             * hold-style. The fork's in-game B was explicitly "//Unused"
-             * (:869-874), so B was free; see the DUCK block comment above
-             * for what the binding does ('c' = +movedown + the
-             * artificial-crouch eye offset) and why not K_CTRL. While the
-             * menu is up, B stays chunk 3's (K_ESCAPE = back, in_menu.c) —
-             * the in-game gate keeps the two from overlapping, and the
-             * release-anywhere rule below un-ducks cleanly if the menu
-             * opens mid-duck. */
-            bool bNow = (rightTrackedRemoteState_new.Buttons & xrButton_B) != 0;
-            bool bWas = (s_locoPrevRight.Buttons & xrButton_B) != 0;
-            if (bNow && !bWas && inGame && !s_duckHeld)
+            /* WEBXR-PORT headset-QA round 2 (item 1) + round-3 swap: DUCK —
+             * right-hand A, hold-style (user QA: duck below jump). See the
+             * DUCK block comment above for what the binding does ('c' =
+             * +movedown + the artificial-crouch eye offset) and why not
+             * K_CTRL. While the menu is up, A stays chunk 3's (K_ENTER,
+             * in_menu.c) — the in-game gate keeps the two from overlapping,
+             * and the release-anywhere rule below un-ducks cleanly if the
+             * menu opens mid-duck. */
+            bool aNow = (rightTrackedRemoteState_new.Buttons & xrButton_A) != 0;
+            bool aWas = (s_locoPrevRight.Buttons & xrButton_A) != 0;
+            if (aNow && !aWas && inGame && !s_duckHeld)
             {
                 QC_KeyEvent(1, 'c', 0);
                 s_duckHeld = true;
             }
-            else if (!bNow && s_duckHeld)
+            else if (!aNow && s_duckHeld)
             {
                 QC_KeyEvent(0, 'c', 0);
                 s_duckHeld = false;

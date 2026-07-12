@@ -250,7 +250,8 @@ await press('left', 4, 0);
 await press('left', 0, 0);
 await sleep(500);
 
-/* ============ T4: right B = duck (hold) ============================== */
+/* ============ T4: right A = duck (hold) ==============================
+ * (round-3 swap: duck moved B -> A, jump A -> B, on user request)      */
 /* park the right controller at a known height so the pose drop is visible */
 await page.evaluate(() => {
   window.__xrdevice.controllers.right.position.set(0.3, 1.2, -0.4);
@@ -263,9 +264,9 @@ const aimYOf = (t) => {
 };
 const aimYBefore = aimYOf(await overlay());
 check('T4 duck inert before press', (await locoProbe(0)) === 0 && (await locoProbe(1)) === 0);
-await press('right', 5, 1); /* B = buttons[5] */
+await press('right', 4, 1); /* A = buttons[4] */
 await sleep(500);
-check('T4 B hold engages +movedown (key \'c\' -> bind -> kbutton chain)',
+check('T4 A hold engages +movedown (key \'c\' -> bind -> kbutton chain)',
   (await locoProbe(1)) === 1, 'probe=' + await locoProbe(1));
 {
   const off = await locoProbe(0);
@@ -277,7 +278,7 @@ check('T4 B hold engages +movedown (key \'c\' -> bind -> kbutton chain)',
     aimYBefore !== null && aimYDucked !== null && Math.abs((aimYBefore - aimYDucked) - 0.45) < 0.02,
     `aimY ${aimYBefore} -> ${aimYDucked}`);
 }
-await press('right', 5, 0);
+await press('right', 4, 0);
 await sleep(500);
 check('T4 release lets go of +movedown', (await locoProbe(1)) === 0);
 check('T4 eye offset back to 0', (await locoProbe(0)) === 0, 'offset=' + await locoProbe(0));

@@ -136,8 +136,8 @@ menu/console/demo is up.
 |---|---|---|
 | Dominant (R) trigger | fire (`+attack`) | in_weapon |
 | Off-hand (L) trigger | run — direct `+speed`/`-speed` button commands, **not** a K_SHIFT key event (QA-round-2 menu root-cause fix, see below); fire when left-handed | in_locomotion |
-| Right A (in-game) | jump (K_SPACE, fork :863-866; headset-QA bug-1 fix — was unported) | in_locomotion |
-| Right B (in-game, hold) | duck — `'c'` (+movedown, swim down) + 0.45 m artificial-crouch eye offset ramped over ~150 ms, applied to head AND controller Ys (QA round 2 item 1) | in_locomotion |
+| Right B (in-game) | jump (K_SPACE; fork bound jump to A, :863-866 — QA round 3 swapped A/B on user request, deliberate deviation) | in_locomotion |
+| Right A (in-game, hold) | duck — `'c'` (+movedown, swim down) + 0.45 m artificial-crouch eye offset ramped over ~150 ms, applied to head AND controller Ys (QA round 2 item 1; moved B→A in round 3) | in_locomotion |
 | **Left X (press)** | **menu toggle (PRIMARY)** — K_ESCAPE dn+up; opens in-game, back/close while menu is up (QA round 2 item 2) | in_menu |
 | Left Y | **unbound** — reserved; anything placed here must be harmless (never destructive/state-changing) | — |
 | Dominant (R) thumbstick click | laser-sight cycle | in_weapon |

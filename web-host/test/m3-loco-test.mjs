@@ -257,27 +257,28 @@ check('off-hand trigger (+speed/run) increases walk distance', walkRun > walkNoR
   `no-run=${walkNoRun.toFixed(1)} run=${walkRun.toFixed(1)}`);
 
 // =====================================================================
-// 5) Jump: right-hand A -> K_SPACE (+jump), the fork's in-game else-branch
-// (QuakeQuest_OpenXR.c:863-866) — headset-QA bug-1 regression check.
+// 5) Jump: right-hand B -> K_SPACE (+jump). The fork bound jump to A
+// (QuakeQuest_OpenXR.c:863-866); headset-QA round 3 swapped A/B on user
+// request (jump on the upper button) — deliberate deviation.
 // Sample origin z while airborne: a jump lifts the player by tens of units.
 // =====================================================================
 await resetToSpawn('before jump phase');
 const zGround = parseLoco(await locoOverlay()).origin[2];
-await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('a-button', 1.0));
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('b-button', 1.0));
 let zPeak = zGround;
 for (let i = 0; i < 8; i++) {
   await sleep(120);
   const z = parseLoco(await locoOverlay()).origin[2];
   if (z > zPeak) zPeak = z;
 }
-await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('a-button', 0.0));
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('b-button', 0.0));
 await sleep(600);
 console.log(`jump: ground z=${zGround.toFixed(1)} peak z=${zPeak.toFixed(1)}`);
-check('right A jumps in-game (origin z rose > 8 units)', zPeak > zGround + 8,
+check('right B jumps in-game (origin z rose > 8 units)', zPeak > zGround + 8,
   `ground=${zGround.toFixed(1)} peak=${zPeak.toFixed(1)}`);
 
 // =====================================================================
-// 6) Duck: right-hand B (hold) -> 'c' key (+movedown) + artificial-crouch
+// 6) Duck: right-hand A (hold) -> 'c' key (+movedown) + artificial-crouch
 // eye offset (headset-QA round 2 item 1). Probe surface: WebXRLoco_Probe
 // (0 = eye offset meters, 1 = in_down.state&1 i.e. +movedown active,
 // 2 = duckHeld). Verifies the full chain key -> bind -> kbutton plus the
@@ -286,17 +287,17 @@ check('right A jumps in-game (origin z rose > 8 units)', zPeak > zGround + 8,
 const locoProbe = (i) => page.evaluate((i) => Module._WebXRLoco_Probe(i), i);
 check('duck: inert before press (offset 0, +movedown off)',
   (await locoProbe(0)) === 0 && (await locoProbe(1)) === 0);
-await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('b-button', 1.0));
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('a-button', 1.0));
 await sleep(500); // several frames + the ~150 ms ramp
 const duckOff = await locoProbe(0);
 const duckMoveDown = await locoProbe(1);
-check('duck: B hold engages +movedown (key \'c\' chain)', duckMoveDown === 1);
+check('duck: A hold engages +movedown (key \'c\' chain)', duckMoveDown === 1);
 check('duck: eye offset ramped to 0.45 m', Math.abs(duckOff - 0.45) < 0.01,
   'offset=' + duckOff);
 // the lowered eye must be visible in the reported controller poses too
 // (aim Y in the input overlay drops by ~the offset) — sanity-checked in
 // m4-qa2-test.mjs with a fixed pose; here just release and verify cleanup.
-await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('b-button', 0.0));
+await page.evaluate(() => window.__xrdevice.controllers.right.updateButtonValue('a-button', 0.0));
 await sleep(500);
 check('duck: release lets go of +movedown', (await locoProbe(1)) === 0);
 check('duck: eye offset ramps back to 0', (await locoProbe(0)) === 0,
