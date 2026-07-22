@@ -105,8 +105,9 @@ initial migration.
 
 The deployed build contains only shareware. A local-game launch imports only
 `.pak`/`.pk3` files selected from the user's `id1` directory into browser-local
-IndexedDB at `/quake_user/id1`; no upload endpoint exists. Shareware launches
-use the separate `/quake_shareware_user` IDBFS mount, so selecting the demo does
-not silently activate commercial data retained from an earlier local import.
-The repository, deployment stage, and migration never copy or move commercial
-game data.
+IndexedDB at `/quake_user/id1`; no upload endpoint exists. When those local
+packs exist, shareware launches use the separate `/quake_shareware_user` IDBFS
+mount, so selecting the demo does not silently activate commercial data. With
+no local packs the original `/quake_user` profile remains in use, preserving
+existing shareware saves/config. The repository, deployment stage, and
+migration never copy or move commercial game data.

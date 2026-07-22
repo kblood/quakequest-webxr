@@ -236,7 +236,11 @@
       // ?startargs=+map,start     (comma-separated, m3-comfort harness)
       const extraArgs = ((params.get('args') || '').match(/\S+/g))
         || (params.get('startargs') || '').split(',').filter(Boolean);
-      if (dataChoice === 'shareware') extraArgs.unshift('--web-shareware');
+      // Preserve the original /quake_user save/config profile when it has no
+      // imported packs. Only isolate shareware into the second userdir when
+      // local commercial data is actually present and must be excluded.
+      if (dataChoice === 'shareware' && listLocalPaks().length)
+        extraArgs.unshift('--web-shareware');
       Module.callMain(extraArgs);
       engineRunning = true;
       activeDataChoice = dataChoice;

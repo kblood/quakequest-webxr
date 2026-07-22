@@ -423,13 +423,14 @@ folder picker accepts only `.pak`/`.pk3` files below an `id1` path; the existing
 individual-file picker remains as a compatibility fallback. Imported bytes are
 written only to `/quake_user/id1` in IDBFS and never enter an HTTP request.
 
-An explicit shareware launch passes the page-only `--web-shareware` marker.
-`main_web.c` consumes that marker and selects `/quake_shareware_user`; the
-marker never reaches DarkPlaces. This separate IDBFS mount makes the shareware
-choice reliable even if `/quake_user/id1` retains full-game files. It neither
-copies nor moves those files. Existing URLs/tests without the marker keep the
-local/import profile, while the launcher defaults to shareware unless persisted
-local packs are present.
+An explicit shareware launch passes the page-only `--web-shareware` marker when
+local packs are present. `main_web.c` consumes that marker and selects
+`/quake_shareware_user`; the marker never reaches DarkPlaces. This separate
+IDBFS mount makes the shareware choice reliable even if `/quake_user/id1`
+retains full-game files. It neither copies nor moves those files. With no local
+packs, shareware keeps the original `/quake_user` profile so existing
+shareware saves/config are preserved. The launcher defaults to shareware unless
+persisted local packs are present.
 
 The canonical deployment is planned for `/webxr/Ports/QuakeQuest/`, with
 `/webxr/Ports/SurrealEngine/` reserved for the later engine port. The current
