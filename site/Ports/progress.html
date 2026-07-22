@@ -91,6 +91,7 @@
   <nav aria-label="Page and project links">
     <a href="./">Browse files</a>
     <a href="./QuakeQuest/">Launch QuakeQuest</a>
+    <a href="./SurrealEngine/">Launch SurrealEngine preview</a>
     <a href="#architecture">Architecture</a>
     <a href="#roadmap">Roadmap</a>
     <a href="https://github.com/kblood/quakequest-webxr/tree/webxr/ports-launcher">Quake source</a>
@@ -114,14 +115,14 @@
         </ul>
       </article>
       <article class="card">
-        <span class="status active">Integration in progress</span>
+        <span class="status active">Experimental preview available</span>
         <h3>Surreal Engine</h3>
-        <p>One Unreal Engine 1 runtime is being assembled for Unreal Tournament, Unreal Gold, and Deus Ex, with
-          desktop controls remaining intact while native OpenXR and browser WebXR plug into shared XR interfaces.</p>
+        <p>The data-free browser preview runs the shared Unreal Engine 1 runtime in flat WebGPU mode and can enter
+          WebXR through either direct WebGPU layers or a Quest-compatible WebGL presentation bridge.</p>
         <ul class="checks">
-          <li>UT99 native VR release path and controller UI working</li>
-          <li>Flat WASM/WebGPU build and legal local-folder import working</li>
-          <li>OpenXR input, Deus Ex foundations, and bot telemetry isolated as PR-sized work</li>
+          <li>Local-folder import for owned UT99 and Unreal Gold data; no game or demo data is hosted</li>
+          <li>Tracked controller proxies, exact menu laser/contact, intro/menu handoff, and mouse fallback integrated</li>
+          <li>Flat mode is automated-tested; physical Quest/WebXR behavior remains an experimental hardware gate</li>
         </ul>
       </article>
     </div>
@@ -177,29 +178,29 @@ flowchart LR
       <article class="card">
         <span class="status available">Integrated foundation</span>
         <h3>Shared baseline</h3>
-        <p>Twenty-one focused topic branches have been preserved for review, while the unified integration branch
-          proves that native VR, browser work, game support, and bot infrastructure can coexist.</p>
+        <p>The unified integration passes all 25 registered native tests plus the browser launcher, import,
+          persistence, direct-WebXR, WebGL-bridge, packaging, and corresponding-source suites.</p>
       </article>
       <article class="card">
-        <span class="status active">Next branches</span>
-        <h3>Close the common interfaces</h3>
-        <p><code>webxr-input-adapter</code>, <code>xr-common-spaces</code>, <code>xr-ui-surfaces</code>,
-          <code>deus-ex-save-package</code>, and <code>bot-controlled-fixtures</code>.</p>
+        <span class="status active">Next gate</span>
+        <h3>Quest and owned-data validation</h3>
+        <p>Test stereo/FOV, frame timing, controllers, menus, intro travel, exit/re-entry, and flat fallback on a
+          physical Quest with user-owned UT99 and Unreal Gold installations.</p>
       </article>
       <article class="card">
-        <span class="status pending">Before public Surreal build</span>
-        <h3>Hardware and release validation</h3>
-        <p>Real Quest WebGPU/WebXR presentation, tracked-controller input, menu and intro surfaces, full native and web
-          regressions, data-free packaging, and deployment under <code>Ports/SurrealEngine/</code>.</p>
+        <span class="status pending">Before stable release</span>
+        <h3>Release validation</h3>
+        <p>Resolve headset findings, test real saves and title isolation, complete human hosting/license review, and
+          keep Unreal 205 unavailable unless its missing <code>UPak</code> dependency is supplied lawfully.</p>
       </article>
     </div>
     <pre class="mermaid">
 flowchart LR
-  A[Shared foundations] --> B[Common XR spaces and input]
-  B --> C[WebXR headset and controller testing]
-  C --> D[Menus, intro, and in-world UI]
-  D --> E[Native plus web regression matrix]
-  E --> F[Data-free Surreal release]
+  A[Shared foundations] --> B[Native and browser regression matrix]
+  B --> C[Data-free experimental preview]
+  C --> D[Physical Quest and owned-data testing]
+  D --> E[Fix measured headset findings]
+  E --> F[Stable Surreal release]
     </pre>
   </section>
 
@@ -208,12 +209,13 @@ flowchart LR
     <table>
       <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
       <tbody>
-        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Native OpenXR on/off builds and 14/14 core tests pass.</td></tr>
-        <tr><td>Web desktop launcher</td><td><code>pr/web-desktop-launcher</code></td><td>UT99 and Unreal Gold detection, local-folder import, and six launcher tests pass.</td></tr>
-        <tr><td>WebXR provider</td><td><code>pr/webxr-provider</code></td><td>Provider lifecycle and flat/WebXR import gate pass; physical Quest presentation remains a release gate.</td></tr>
+        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 25 registered native tests pass.</td></tr>
+        <tr><td>Web desktop launcher</td><td><code>pr/web-desktop-launcher</code></td><td>12 launcher, 19 importer, 13 persistence, and 3 bootstrap browser checks pass.</td></tr>
+        <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, input, UI, and re-entry tests pass; physical Quest remains unverified.</td></tr>
         <tr><td>OpenXR controls</td><td><code>pr/openxr-input-adapter</code></td><td>Tracked controllers, ray/UI targeting, and desktop mouse fallback are integrated.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
+        <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-2809da06</code></td><td>Live HTTPS isolation, WASM MIME, source archive, no-data gate, flat input, fullscreen, and synthetic launch validated.</td></tr>
       </tbody>
     </table>
   </section>
