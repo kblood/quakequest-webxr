@@ -197,6 +197,10 @@
       statusEl.textContent = 'choose a Quake folder or id1 pak files before launching local data';
     else if (mode === 'webxr' && !xrSupported)
       statusEl.textContent = 'WebXR is unavailable here — choose flatscreen or open this page in a headset browser';
+    else
+      statusEl.textContent = data === 'local'
+        ? 'ready — browser-local Quake data selected'
+        : 'ready — bundled shareware selected';
   }
 
   // webxr_bridge.c reports session state through this (EM_JS)
