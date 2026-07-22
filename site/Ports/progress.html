@@ -84,7 +84,7 @@
 </head>
 <body>
 <header>
-  <div class="eyebrow">Development report · 22 July 2026</div>
+  <div class="eyebrow">Development report · 23 July 2026</div>
   <h1>WebXR Ports</h1>
   <p class="lead">A shared effort to keep classic engines useful in ordinary desktop mode while adding native VR,
     WASM/WebGPU, and WebXR as optional presentation and input layers.</p>
@@ -122,6 +122,7 @@
         <ul class="checks">
           <li>Local-folder import for owned UT99 and Unreal Gold data; no game or demo data is hosted</li>
           <li>Tracked controller proxies, exact menu laser/contact, intro/menu handoff, and mouse fallback integrated</li>
+          <li>Browser OpenAL/Web Audio playback, explicit audio unlock, mute, volume, and lifecycle handling integrated</li>
           <li>Flat mode is automated-tested; physical Quest/WebXR behavior remains an experimental hardware gate</li>
         </ul>
       </article>
@@ -178,14 +179,15 @@ flowchart LR
       <article class="card">
         <span class="status available">Integrated foundation</span>
         <h3>Shared baseline</h3>
-        <p>The unified integration passes all 25 registered native tests plus the browser launcher, import,
+        <p>The unified integration passes all 27 registered native tests plus the browser launcher, import,
           persistence, direct-WebXR, WebGL-bridge, packaging, and corresponding-source suites.</p>
       </article>
       <article class="card">
         <span class="status active">Next gate</span>
         <h3>Quest and owned-data validation</h3>
-        <p>Test stereo/FOV, frame timing, controllers, menus, intro travel, exit/re-entry, and flat fallback on a
-          physical Quest with user-owned UT99 and Unreal Gold installations.</p>
+        <p>A real 496-file GOG UT99 folder validates, persists, materializes, and reaches the launcher. Native startup
+          after Play is the current desktop-browser fault boundary. Physical Quest stereo/FOV, timing, controls,
+          menus, intro travel, exit/re-entry, and audio remain hardware gates.</p>
       </article>
       <article class="card">
         <span class="status pending">Before stable release</span>
@@ -209,13 +211,14 @@ flowchart LR
     <table>
       <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
       <tbody>
-        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 25 registered native tests pass.</td></tr>
-        <tr><td>Web desktop launcher</td><td><code>pr/web-desktop-launcher</code></td><td>12 launcher, 19 importer, 13 persistence, and 3 bootstrap browser checks pass.</td></tr>
+        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 27 registered native tests pass.</td></tr>
+        <tr><td>Web desktop launcher</td><td><code>pr/web-desktop-launcher</code></td><td>12 launcher, 21 importer, 13 persistence, and 3 bootstrap browser checks pass. The exact GOG UT99 layout validates as 496 files / 659,817,346 bytes.</td></tr>
         <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, input, UI, and re-entry tests pass; physical Quest remains unverified.</td></tr>
-        <tr><td>OpenXR controls</td><td><code>pr/openxr-input-adapter</code></td><td>Tracked controllers, ray/UI targeting, and desktop mouse fallback are integrated.</td></tr>
+        <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, and independent Vulkan UI targets are integrated; OpenXR quad swapchain submission remains in progress.</td></tr>
+        <tr><td>Browser audio</td><td><code>release/browser-candidate-f4bbecad</code></td><td>OpenAL/Web Audio SFX and streamed-music queues, explicit unlock, visibility/XR lifecycle, mute, and volume pass generated-PCM Chrome tests; owned-game listening remains unverified.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
-        <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-2809da06</code></td><td>Live HTTPS isolation, WASM MIME, source archive, no-data gate, flat input, fullscreen, and synthetic launch validated.</td></tr>
+        <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-f4bbecad</code></td><td>Live HTTPS isolation, WASM MIME, source archive, no-data gate, compact legal footer, audio capability, flat input, fullscreen, and synthetic launch validated. Owner-data startup after Play is still under investigation.</td></tr>
       </tbody>
     </table>
   </section>
