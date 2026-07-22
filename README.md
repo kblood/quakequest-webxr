@@ -6,12 +6,12 @@ WebAssembly with Emscripten. Plays the shareware episode out of the box; owners
 of the full game can drop in their own `pak` files, which are stored
 browser-locally (IndexedDB) and never uploaded anywhere.
 
-**Play it:** https://dionysus.dk/webxr/quakequest/ — works flatscreen in any
+**Play it:** https://dionysus.dk/webxr/Ports/QuakeQuest/ — works flatscreen in any
 browser, or click *Enter VR* in a headset browser (developed and QA'd on
 Meta Quest 3). Installable as a PWA with full offline support.
 
 The planned canonical ports layout is
-`https://dionysus.dk/webxr/Ports/QuakeQuest/`, with the current URL retained as
+`https://dionysus.dk/webxr/Ports/QuakeQuest/`, with the legacy URL retained as
 an internal compatibility alias for existing service-worker and Quest TWA
 installations. See [DEPLOYMENT.md](DEPLOYMENT.md); the migration is not deployed
 by this source commit.

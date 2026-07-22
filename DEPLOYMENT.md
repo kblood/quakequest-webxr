@@ -1,8 +1,26 @@
 # WebXR ports deployment
 
-## Verified current release
+## Completed migration
 
-QuakeQuest is currently released at:
+The Ports layout was deployed on 2026-07-22. The canonical release is now
+`https://dionysus.dk/webxr/Ports/QuakeQuest/`, with the site catalog at
+`https://dionysus.dk/webxr/Ports/`. Apache internally aliases the legacy
+`/webxr/quakequest/` scope to the same physical release so existing PWAs and
+the signed Quest TWA continue to work.
+
+The canonical files live at `/var/www/html/webxr/Ports/QuakeQuest`. The exact
+pre-migration release is preserved at
+`/var/www/html/webxr/.quakequest.pre-ports-20260722-182834`; the previous Apache
+configuration is preserved as
+`/etc/apache2/conf-available/quakequest.conf.pre-ports-20260722-182834`.
+Both live paths returned byte-identical HTML, service worker, WASM, and
+shareware data after deployment. Both reported independent scope-qualified
+service-worker caches, `crossOriginIsolated === true`, two game-data choices,
+two display choices, and no browser page errors.
+
+## Verified pre-migration release
+
+Before the migration, QuakeQuest was released at:
 
 ```text
 https://dionysus.dk/webxr/quakequest/
