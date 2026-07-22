@@ -179,7 +179,7 @@ flowchart LR
       <article class="card">
         <span class="status available">Integrated foundation</span>
         <h3>Shared baseline</h3>
-        <p>The unified integration passes all 27 registered native tests plus the browser launcher, import,
+        <p>The unified integration passes all 28 registered native tests plus the browser launcher, import,
           persistence, direct-WebXR, WebGL-bridge, packaging, and corresponding-source suites.</p>
       </article>
       <article class="card">
@@ -211,10 +211,10 @@ flowchart LR
     <table>
       <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
       <tbody>
-        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 27 registered native tests pass.</td></tr>
+        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 28 registered native tests pass.</td></tr>
         <tr><td>Web desktop launcher</td><td><code>pr/web-desktop-launcher</code></td><td>12 launcher, 21 importer, 13 persistence, and 3 bootstrap browser checks pass. The exact GOG UT99 layout validates as 496 files / 659,817,346 bytes.</td></tr>
         <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, input, UI, and re-entry tests pass; physical Quest remains unverified.</td></tr>
-        <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, and independent Vulkan UI targets are integrated; OpenXR quad swapchain submission remains in progress.</td></tr>
+        <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, independent Vulkan targets, and ordered OpenXR quad swapchain submission are integrated. Native AVI/loading presentation and headset validation remain.</td></tr>
         <tr><td>Browser audio</td><td><code>release/browser-candidate-f4bbecad</code></td><td>OpenAL/Web Audio SFX and streamed-music queues, explicit unlock, visibility/XR lifecycle, mute, and volume pass generated-PCM Chrome tests; owned-game listening remains unverified.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
