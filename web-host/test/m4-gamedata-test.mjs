@@ -126,10 +126,33 @@ console.log('# M4 game-data drop-in test (synthetic pak = ' + PAK_PATH + ')');
 // -- fresh state: make sure no leftover paks from an earlier run
 await openPage(BASEURL);
 await page.waitForFunction(() => !document.getElementById('pak-input').disabled);
+const launcher = await page.evaluate(() => ({
+  data: Array.from(document.querySelectorAll('input[name="game-data"]')).map((e) => e.value),
+  modes: Array.from(document.querySelectorAll('input[name="launch-mode"]')).map((e) => e.value),
+  folderPicker: !!document.getElementById('folder-input')?.webkitdirectory,
+}));
+check('launcher offers bundled and local data',
+  launcher.data.join(',') === 'shareware,local', JSON.stringify(launcher));
+check('launcher offers flat/WASM and WebXR modes',
+  launcher.modes.join(',') === 'flat,webxr', JSON.stringify(launcher));
+check('launcher exposes a Quake folder picker', launcher.folderPicker, JSON.stringify(launcher));
+const filteredFolderFiles = await page.evaluate(() => filesFromId1Folder([
+  { name: 'pak0.pak', webkitRelativePath: 'Quake/id1/pak0.pak' },
+  { name: 'pak0.pak', webkitRelativePath: 'Quake/hipnotic/pak0.pak' },
+  { name: 'readme.txt', webkitRelativePath: 'Quake/id1/readme.txt' },
+]).map((file) => file.webkitRelativePath));
+check('folder import is restricted to id1 pack files',
+  filteredFolderFiles.join(',') === 'Quake/id1/pak0.pak', filteredFolderFiles.join(','));
 if ((await localPaks()).length) {
   await page.evaluate(() => document.getElementById('pak-clear').click());
   await sleep(1500);
 }
+await page.evaluate(() => {
+  const local = document.querySelector('input[name="game-data"][value="local"]');
+  local.click();
+});
+check('local launch is blocked until data is imported',
+  await page.$eval('#start', (button) => button.disabled));
 
 // (1) upload before start -> boot registered
 const status1 = await uploadPak(PAK_PATH);
@@ -167,6 +190,16 @@ check('persisted pak listed', (await localPaks()).includes('pak1.pak'));
 check('no console errors (synthetic pak run)', errors.length === 0,
   errors.slice(0, 3).join(' | '));
 await page.screenshot({ path: SCREENSHOT });
+
+// (4b) explicit shareware choice must ignore, but not delete or move, the
+// commercial/local-data mount retained by the browser.
+await openPage(BASEURL + '?data=shareware&autostart=1');
+check('explicit shareware launch uses isolated userdir',
+  await waitForLog(/data profile: bundled shareware/));
+check('explicit shareware launch ignores stored registered marker',
+  await waitForLog(/Playing shareware version/));
+check('shareware choice preserves browser-local pak',
+  (await localPaks()).includes('pak1.pak'));
 
 // (5) cleanup + reload -> shareware boot again
 await page.evaluate(() => document.getElementById('pak-clear').click());

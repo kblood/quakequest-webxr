@@ -13,7 +13,19 @@
                font-family: system-ui, sans-serif; height: 100%; }
   #wrap { display: flex; flex-direction: column; align-items: center; gap: 10px;
           padding: 16px; }
-  #buttons { display: flex; gap: 12px; }
+  #launcher { width: min(720px, calc(100vw - 32px)); border: 1px solid #444;
+              border-radius: 8px; padding: 14px; background: #181818; }
+  #launcher fieldset { border: 0; margin: 0 0 12px; padding: 0; }
+  #launcher legend { font-weight: 700; margin-bottom: 7px; color: #ddd; }
+  .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .choice { display: block; border: 1px solid #444; border-radius: 6px;
+            padding: 9px; cursor: pointer; background: #202020; }
+  .choice:has(input:checked) { border-color: #9a5b38; background: #2b211b; }
+  .choice input { margin-right: 6px; }
+  .choice small { display: block; color: #999; margin: 4px 0 0 22px; }
+  #import-controls { margin: 8px 0 0 22px; color: #999; font-size: .85rem; }
+  #folder-input, #pak-input { display: block; margin: 6px 0; max-width: 100%; }
+  #buttons { display: flex; flex-wrap: wrap; gap: 12px; }
   canvas { background: #000; image-rendering: pixelated; outline: none;
            max-width: 100%; }
   #start, #entervr { font-size: 1.4rem; padding: 12px 40px; cursor: pointer;
@@ -32,14 +44,51 @@
   #pak-clear { margin-left: 10px; font-size: .8rem; cursor: pointer;
                background: #333; color: #ccc; border: 1px solid #555;
                border-radius: 4px; padding: 2px 8px; }
+  @media (max-width: 620px) { .choice-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div id="wrap">
   <h2>QuakeQuest Web — Quake VR in the browser</h2>
-  <div id="buttons">
-    <button id="start" disabled>Loading&hellip;</button>
-    <button id="entervr" disabled>Checking VR&hellip;</button>
+  <div id="launcher">
+    <fieldset>
+      <legend>1. Choose game data</legend>
+      <div class="choice-grid">
+        <label class="choice"><input type="radio" name="game-data" value="shareware" checked>
+          Bundled shareware demo
+          <small>The freely redistributable Quake episode already included with this build.</small>
+        </label>
+        <label class="choice"><input type="radio" name="game-data" value="local">
+          My local Quake installation
+          <small>Import pak files from an installation you own. Files stay in this browser.</small>
+          <span id="import-controls">
+            <input type="file" id="folder-input" webkitdirectory directory multiple disabled>
+            <span>Choose the Quake folder (or its <code>id1</code> folder).</span>
+            <input type="file" id="pak-input" accept=".pak,.pk3" multiple disabled>
+            <span>Fallback: choose <code>id1/pak0.pak</code> and optional <code>pak1.pak</code>.</span>
+          </span>
+        </label>
+      </div>
+      <button id="pak-clear" hidden>Remove browser-local pak files</button>
+      <span id="pak-status"></span>
+    </fieldset>
+    <fieldset>
+      <legend>2. Choose display mode</legend>
+      <div class="choice-grid">
+        <label class="choice"><input type="radio" name="launch-mode" value="flat" checked>
+          Flatscreen / WASM
+          <small>Keyboard and mouse on a regular desktop browser.</small>
+        </label>
+        <label class="choice" id="webxr-choice"><input type="radio" name="launch-mode" value="webxr">
+          WebXR
+          <small>Immersive headset and tracked-controller mode.</small>
+        </label>
+      </div>
+    </fieldset>
+    <div id="buttons">
+      <button id="start" disabled>Loading&hellip;</button>
+      <button id="entervr" disabled>Checking VR&hellip;</button>
+    </div>
   </div>
   <div id="status">fetching engine&hellip;</div>
   <canvas id="canvas" width="1280" height="720" tabindex="0"
@@ -49,42 +98,38 @@
     On a headset: just click <b>Enter VR</b> &middot; left stick move &middot;
     right stick turn &middot; trigger fire &middot; B jump &middot; A duck (hold) &middot;
     X menu (or left-stick click; hold stick click to recenter)</div>
-  <details id="pakbox">
-    <summary>Full game data (optional) — bring your own pak files</summary>
-    <p>This page ships only the freely redistributable <b>shareware</b> episode.
-      If you own the full game, pick its <code>.pak</code> file(s) here — the
-      classic layout is <code>pak0.pak</code>&nbsp;+&nbsp;<code>pak1.pak</code>
-      from an original/GOG-classic <code>id1</code> folder.</p>
-    <p class="note"><b>Local only:</b> your files are stored in this browser's
-      own storage (IndexedDB) and read by the game right here on your machine.
-      They are <b>never uploaded to any server</b>.</p>
-    <input type="file" id="pak-input" accept=".pak,.pk3" multiple disabled>
-    <button id="pak-clear" hidden>Remove local pak files</button>
-    <span id="pak-status"></span>
-  </details>
+  <p id="pakbox" class="note"><b>Privacy:</b> imported game files are copied
+    directly into this browser's IndexedDB storage and are never uploaded.
+    The deployed bundle contains only the legally redistributable shareware data.</p>
 </div>
 <script>
   const startBtn = document.getElementById('start');
   const vrBtn = document.getElementById('entervr');
   const statusEl = document.getElementById('status');
   const params = new URLSearchParams(location.search);
+  const dataChoices = Array.from(document.querySelectorAll('input[name="game-data"]'));
+  const modeChoices = Array.from(document.querySelectorAll('input[name="launch-mode"]'));
 
   let engineRunning = false;
   let xrActive = false;
   let xrSupported = false;
+  let runtimeReady = false;
+  let activeDataChoice = '';
 
   var Module = {
     canvas: document.getElementById('canvas'),
     // WebXR bridge tunable (library_webxr.js): 1.0 = native XRWebGLLayer scale
     webxr_framebuffer_scale_factor: 1.0,
-    // Persistence (M1 issue #4): /quake_user is an IDBFS mount, populated
-    // from IndexedDB before main() can run (run dependency blocks
-    // onRuntimeInitialized until the initial sync completes).
+    // Persistence: keep imported/full-game data and shareware-only saves in
+    // distinct IDBFS userdirs. Selecting shareware therefore cannot
+    // accidentally load commercial paks already stored by the browser.
     preRun: [() => {
       const FS = Module.FS;
       Module.addRunDependency('idbfs');
-      FS.mkdir('/quake_user');
-      FS.mount(FS.filesystems.IDBFS, {}, '/quake_user');
+      for (const path of ['/quake_user', '/quake_shareware_user']) {
+        FS.mkdir(path);
+        FS.mount(FS.filesystems.IDBFS, {}, path);
+      }
       FS.syncfs(true, (err) => {
         if (err) console.warn('[persist] initial IDBFS sync failed:', err);
         Module.removeRunDependency('idbfs');
@@ -93,13 +138,20 @@
     // engine main() is invoked from the Start click (user activation for
     // pointer lock + audio); build links with -sINVOKE_RUN=0
     onRuntimeInitialized: () => {
-      startBtn.disabled = false;
-      startBtn.textContent = 'Start Quake';
+      runtimeReady = true;
       statusEl.textContent = 'ready — shareware pak0.pak preloaded';
       pakInput.disabled = false;
-      refreshPakStatus();
+      folderInput.disabled = false;
+      refreshPakStatus('', !params.has('data'));
+      const requestedData = params.get('data');
+      if (requestedData === 'shareware' || requestedData === 'local')
+        selectRadio(dataChoices, requestedData);
+      const requestedMode = params.get('mode');
+      if (requestedMode === 'flat' || requestedMode === 'webxr')
+        selectRadio(modeChoices, requestedMode);
+      updateLauncher();
       // dev convenience for headless tests: ?autostart=1 skips the click
-      if (params.get('autostart')) startEngine();
+      if (params.get('autostart')) launchSelectedMode();
     },
     setStatus: (t) => { if (t) statusEl.textContent = t; },
     printErr: (t) => console.error(t),
@@ -117,6 +169,34 @@
       vrBtn.disabled = false;
       vrBtn.textContent = 'Enter VR';
     }
+    updateLauncher();
+  }
+
+  function selectedValue(choices) {
+    return choices.find((input) => input.checked)?.value || '';
+  }
+
+  function selectRadio(choices, value) {
+    const input = choices.find((candidate) => candidate.value === value);
+    if (input) input.checked = true;
+  }
+
+  function updateLauncher() {
+    if (!runtimeReady || engineRunning) {
+      startBtn.disabled = true;
+      if (!runtimeReady) startBtn.textContent = 'Loading…';
+      return;
+    }
+    const data = selectedValue(dataChoices);
+    const mode = selectedValue(modeChoices);
+    const localReady = listLocalPaks().length > 0;
+    const blocked = data === 'local' && !localReady;
+    startBtn.disabled = blocked || (mode === 'webxr' && !xrSupported);
+    startBtn.textContent = mode === 'webxr' ? 'Launch in WebXR' : 'Launch flatscreen';
+    if (blocked)
+      statusEl.textContent = 'choose a Quake folder or id1 pak files before launching local data';
+    else if (mode === 'webxr' && !xrSupported)
+      statusEl.textContent = 'WebXR is unavailable here — choose flatscreen or open this page in a headset browser';
   }
 
   // webxr_bridge.c reports session state through this (EM_JS)
@@ -137,6 +217,12 @@
   }
 
   function startEngine() {
+    const dataChoice = selectedValue(dataChoices) || 'shareware';
+    if (dataChoice === 'local' && listLocalPaks().length === 0) {
+      statusEl.textContent = 'local Quake data is selected, but no id1 pak files have been imported';
+      updateLauncher();
+      return false;
+    }
     startBtn.disabled = true;
     startBtn.textContent = 'Running';
     statusEl.textContent = 'engine starting…';
@@ -146,10 +232,13 @@
       // ?startargs=+map,start     (comma-separated, m3-comfort harness)
       const extraArgs = ((params.get('args') || '').match(/\S+/g))
         || (params.get('startargs') || '').split(',').filter(Boolean);
+      if (dataChoice === 'shareware') extraArgs.unshift('--web-shareware');
       Module.callMain(extraArgs);
       engineRunning = true;
+      activeDataChoice = dataChoice;
       statusEl.textContent = 'running';
       Module.canvas.focus();
+      for (const input of [...dataChoices, ...modeChoices]) input.disabled = true;
       updateVRButton();
     } catch (e) {
       statusEl.textContent = 'engine failed to start — see console';
@@ -161,9 +250,18 @@
     if (params.get('fbotest')) {
       setTimeout(() => Module._WebFBOTest_Request(), 9000);
     }
+    return true;
   }
 
-  startBtn.addEventListener('click', startEngine);
+  function launchSelectedMode() {
+    const mode = selectedValue(modeChoices) || 'flat';
+    if (!startEngine()) return;
+    if (mode === 'webxr') Module._WebXRBridge_RequestSession();
+  }
+
+  startBtn.addEventListener('click', launchSelectedMode);
+  for (const input of [...dataChoices, ...modeChoices])
+    input.addEventListener('change', updateLauncher);
 
   // Enter VR is its OWN user-activation click, independent of Start
   // (design doc risk #9: requestSession must run inside a fresh activation).
@@ -184,7 +282,7 @@
         statusEl.textContent = 'engine still loading — try again in a moment';
         return;
       }
-      startEngine();
+      if (!startEngine()) return;
     }
     Module._WebXRBridge_RequestSession();
   });
@@ -196,6 +294,7 @@
   // shareware pak). CLIENT-SIDE ONLY: file bytes go browser-local into
   // IndexedDB; there is no upload — this page has no server backend at all.
   const pakInput = document.getElementById('pak-input');
+  const folderInput = document.getElementById('folder-input');
   const pakStatus = document.getElementById('pak-status');
   const pakClear = document.getElementById('pak-clear');
   const PAK_DIR = '/quake_user/id1';
@@ -207,13 +306,16 @@
     } catch (e) { return []; }
   }
 
-  function refreshPakStatus(msg) {
+  function refreshPakStatus(msg, preferLocal = false) {
     const paks = listLocalPaks();
     pakClear.hidden = paks.length === 0;
-    if (msg) { pakStatus.textContent = msg; return; }
-    pakStatus.textContent = paks.length
-      ? 'local game data present: ' + paks.join(', ')
-      : '';
+    if (preferLocal && paks.length && !engineRunning) selectRadio(dataChoices, 'local');
+    if (!paks.length && selectedValue(dataChoices) === 'local' && !engineRunning)
+      selectRadio(dataChoices, 'shareware');
+    pakStatus.textContent = msg || (paks.length
+      ? 'browser-local game data: ' + paks.join(', ')
+      : 'no local pak files imported');
+    updateLauncher();
   }
 
   function syncPaks() {
@@ -223,10 +325,22 @@
     }));
   }
 
-  pakInput.addEventListener('change', async () => {
-    const files = Array.from(pakInput.files || []);
+  function filesFromId1Folder(files) {
+    const pakFiles = files.filter((file) => /\.(pak|pk3)$/i.test(file.name));
+    const id1Files = pakFiles.filter((file) => {
+      const parts = (file.webkitRelativePath || '').split('/');
+      return parts.slice(0, -1).some((part) => part.toLowerCase() === 'id1');
+    });
+    // Individual-file fallback has no webkitRelativePath. A folder selection
+    // should have it; accepting extension-filtered files when it does not is
+    // the only practical fallback for browsers that omit the property.
+    return id1Files.length ? id1Files : pakFiles;
+  }
+
+  async function storePakFiles(files, sourceLabel) {
     if (!files.length) return;
     pakInput.disabled = true;
+    folderInput.disabled = true;
     try {
       Module.FS.mkdirTree(PAK_DIR);
       const stored = [];
@@ -241,23 +355,42 @@
         Module.FS.writeFile(PAK_DIR + '/' + name, data);
         stored.push(name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)');
       }
+      if (!stored.length) {
+        refreshPakStatus('no id1 .pak or .pk3 files found in ' + sourceLabel);
+        return;
+      }
       pakStatus.textContent = 'saving to browser storage…';
       await syncPaks();
       // running engine: rebuild the search path now (fs_rescan also
       // re-checks gfx/pop.lmp -> registered). Otherwise the paks are
       // simply there when Start runs FS_Init.
-      if (engineRunning && Module._WebHost_RescanFS) Module._WebHost_RescanFS();
+      if (engineRunning && activeDataChoice === 'local' && Module._WebHost_RescanFS)
+        Module._WebHost_RescanFS();
       refreshPakStatus('stored locally: ' + stored.join(', ')
-        + (engineRunning ? ' — rescanned; start a NEW GAME to use it'
-                         : ' — will be used when the game starts')
-        + ' (browser-local only, nothing uploaded)');
+        + (engineRunning && activeDataChoice === 'local'
+          ? ' — rescanned; start a NEW GAME to use it'
+          : engineRunning
+            ? ' — reload to launch with local data'
+            : ' — ready for local-data launch')
+        + ' (browser-local only, nothing uploaded)', true);
     } catch (e) {
       console.error('[pak] store failed:', e);
       refreshPakStatus('failed to store pak: ' + e);
     } finally {
       pakInput.disabled = false;
+      folderInput.disabled = false;
       pakInput.value = '';
+      folderInput.value = '';
     }
+  }
+
+  pakInput.addEventListener('change', async () => {
+    await storePakFiles(Array.from(pakInput.files || []), 'selected files');
+  });
+
+  folderInput.addEventListener('change', async () => {
+    const files = filesFromId1Folder(Array.from(folderInput.files || []));
+    await storePakFiles(files, 'the selected folder');
   });
 
   pakClear.addEventListener('click', async () => {
@@ -267,7 +400,8 @@
       catch (e) { console.warn('[pak] unlink failed:', n, e); }
     }
     await syncPaks();
-    if (engineRunning && Module._WebHost_RescanFS) Module._WebHost_RescanFS();
+    if (engineRunning && activeDataChoice === 'local' && Module._WebHost_RescanFS)
+      Module._WebHost_RescanFS();
     refreshPakStatus(paks.length
       ? 'removed ' + paks.join(', ') + (engineRunning ? ' — reload the page' : '')
       : '');

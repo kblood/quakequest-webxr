@@ -249,10 +249,11 @@ static EM_BOOL on_pointerlockchange(int type, const EmscriptenPointerlockChangeE
 bool WebFBOTest_RunIfRequested(void); /* fbo_smoketest.c — M2 risk-#1 probe */
 
 /* =====================================================================
- * Config/save persistence (M1 issue #4): /quake_user is an IDBFS mount
- * (set up in index.html preRun, populated with FS.syncfs(true) before
- * main runs); the engine writes there via -userdir. Persist = write
- * config.cfg + push the mount to IndexedDB.
+ * Config/save persistence (M1 issue #4): /quake_user and
+ * /quake_shareware_user are IDBFS mounts (set up in index.html preRun,
+ * populated with FS.syncfs(true) before main runs). The launcher selects
+ * one as -userdir so imported full-game paks can never leak into an explicit
+ * shareware launch. Persist = write config.cfg + push the mounts to IndexedDB.
  * ===================================================================== */
 void Host_SaveConfig(void); /* host.c — writes key binds + archived cvars */
 
@@ -399,17 +400,30 @@ int main(int argc, char **argv)
 		printf("[web-host] WARNING: chdir /quake failed — game data missing?\n");
 
 	/* ---- engine args (mirrors sys_linux.c main) ----
-	 * -userdir /quake_user: writable IDBFS mount for config.cfg/saves
-	 * (mounted+preloaded by index.html preRun; M1 issue #4).
+	 * -userdir /quake_user: writable IDBFS mount for config.cfg/saves and
+	 * browser-local imported paks. The page-only --web-shareware marker selects
+	 * /quake_shareware_user instead, so a user can explicitly launch the bundled
+	 * legal demo even when commercial paks are stored in the other mount. The
+	 * marker is consumed here and is never passed into DarkPlaces.
+	 * Both mounts are populated by index.html preRun (M1 issue #4).
 	 * WEBXR-PORT: any argv from Module.callMain([...]) is appended so the
 	 * page (or a headless test harness) can hand the engine command-line
 	 * options like "-benchmark demo1" or "+timedemo demo1". argv[0] is
 	 * always replaced with "quake". */
-	static const char *args[64] = { "quake", "-userdir", "/quake_user" };
+	qboolean shareware_userdir = false;
+	for (int ai = 1; ai < argc; ai++)
+		if (!strcmp(argv[ai], "--web-shareware"))
+			shareware_userdir = true;
+	static const char *args[64];
+	args[0] = "quake";
+	args[1] = "-userdir";
+	args[2] = shareware_userdir ? "/quake_shareware_user" : "/quake_user";
 	com_argc = 3;
 	for (int ai = 1; ai < argc && com_argc < (int)(sizeof(args)/sizeof(args[0])); ai++)
-		args[com_argc++] = argv[ai];
+		if (strcmp(argv[ai], "--web-shareware"))
+			args[com_argc++] = argv[ai];
 	com_argv = args;
+	printf("[web-host] data profile: %s\n", shareware_userdir ? "bundled shareware" : "local/imported");
 
 	/* ---- engine init (Host_Main = Host_Init, no loop) ---- */
 	Host_Main();
