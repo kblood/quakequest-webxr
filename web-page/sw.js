@@ -13,8 +13,14 @@
 // hash of quake.wasm + quake.data + index.html, so the cache name changes
 // automatically whenever any of those change. Never bump this by hand.
 const BUILD_VERSION = '__BUILD_VERSION__';
-const CACHE_NAME = 'quakequest-' + BUILD_VERSION;
-const CACHE_PREFIX = 'quakequest-';
+// Cache Storage is origin-wide, not service-worker-scope-wide. Include the
+// registration scope so the legacy /webxr/quakequest/ compatibility alias
+// and /webxr/Ports/QuakeQuest/ can coexist without deleting or reading each
+// other's app shell during migration.
+const SCOPE_KEY = encodeURIComponent(new URL(self.registration.scope).pathname);
+const CACHE_PREFIX = 'quakequest-' + SCOPE_KEY + '-';
+const CACHE_NAME = CACHE_PREFIX + BUILD_VERSION;
+const LEGACY_CACHE_PATTERN = /^quakequest-[0-9a-f]{12}$/i;
 
 const PRECACHE_URLS = [
   './',                          // index.html (the whole app shell)
@@ -41,7 +47,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const names = await caches.keys();
     await Promise.all(
-      names.filter((n) => n.startsWith(CACHE_PREFIX) && n !== CACHE_NAME)
+      names.filter((n) => (n.startsWith(CACHE_PREFIX) && n !== CACHE_NAME)
+             || LEGACY_CACHE_PATTERN.test(n))
            .map((n) => caches.delete(n)),
     );
     await self.clients.claim();

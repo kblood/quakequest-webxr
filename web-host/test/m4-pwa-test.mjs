@@ -161,13 +161,17 @@ try {
 
   const cacheInfo = await pollUntil(() => page.evaluate(async () => {
     const keys = await caches.keys();
-    const name = keys.find((k) => k.startsWith('quakequest-'));
+    const ready = await navigator.serviceWorker.ready;
+    const scopeKey = encodeURIComponent(new URL(ready.scope).pathname);
+    const prefix = 'quakequest-' + scopeKey + '-';
+    const name = keys.find((k) => k.startsWith(prefix));
     if (!name) return null;
     const cache = await caches.open(name);
     const reqs = await cache.keys();
-    return { cacheName: name, paths: reqs.map((r) => new URL(r.url).pathname).sort() };
+    return { cacheName: name, cachePrefix: prefix,
+      paths: reqs.map((r) => new URL(r.url).pathname).sort() };
   }), 15000, 300);
-  check('a quakequest-<version> cache exists', !!cacheInfo, JSON.stringify(cacheInfo));
+  check('a scope-qualified QuakeQuest cache exists', !!cacheInfo, JSON.stringify(cacheInfo));
   const expectCount = 8; // ./, quake.js, quake.wasm, quake.data, manifest, 3 icons
   check('precache holds all 8 expected entries', cacheInfo?.paths?.length === expectCount,
     JSON.stringify(cacheInfo?.paths));
@@ -215,7 +219,7 @@ try {
     // caches are only deleted in 'activate' (after install's addAll already
     // resolved), so checking either half alone races the install/activate
     // sequence and can observe a half-finished swap.
-    const newCacheName = 'quakequest-' + newVersion;
+    const newCacheName = cacheInfo.cachePrefix + newVersion;
     const swapped = await pollUntil(() => page.evaluate(async (args) => {
       const [oldName, newName] = args;
       const keys = await caches.keys();

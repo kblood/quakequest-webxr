@@ -218,6 +218,7 @@ echo "== copying web-page shell (manifest/sw/icons) =="
 cp web-page/index.html "$WEBOUT/index.html"
 cp web-page/manifest.webmanifest "$WEBOUT/manifest.webmanifest"
 cp web-page/sw.js "$WEBOUT/sw.js"
+cp web-page/.htaccess "$WEBOUT/.htaccess"
 mkdir -p "$WEBOUT/icons"
 cp web-page/icons/*.png "$WEBOUT/icons/"
 
