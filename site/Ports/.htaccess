@@ -1,5 +1,3 @@
-DirectoryIndex index.html
-
 <IfModule mod_headers.c>
   <FilesMatch "\.(html|json|webmanifest)$">
     Header set Cache-Control "no-cache, must-revalidate"

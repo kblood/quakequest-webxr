@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Development status and architecture for the QuakeQuest and Surreal Engine WebXR ports.">
+  <title>WebXR Ports — Development Progress</title>
+  <style>
+    :root {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #e9f0f5;
+      background: #090d12;
+      --panel: rgba(17, 25, 34, .92);
+      --border: #2e4050;
+      --muted: #a6b5c2;
+      --blue: #76c8ff;
+      --green: #72dda8;
+      --amber: #ffd27a;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 0, rgba(35, 102, 143, .28), transparent 34rem),
+        radial-gradient(circle at 90% 24rem, rgba(60, 122, 92, .16), transparent 30rem),
+        #090d12;
+    }
+    a { color: var(--blue); }
+    a:hover { color: #b7e3ff; }
+    code { padding: .1em .35em; border-radius: 4px; background: #101820; }
+    header, main, footer { width: min(1120px, calc(100% - 32px)); margin-inline: auto; }
+    header { padding: 54px 0 28px; }
+    .eyebrow { color: var(--blue); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: .18em 0 .25em; font-size: clamp(2.25rem, 7vw, 5.2rem); letter-spacing: -.055em; line-height: .98; }
+    h2 { margin: 0 0 .7rem; font-size: clamp(1.35rem, 3vw, 2rem); }
+    h3 { margin: .25rem 0 .55rem; }
+    p, li { line-height: 1.62; }
+    .lead { max-width: 800px; margin: 0; color: var(--muted); font-size: 1.08rem; }
+    nav { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
+    nav a {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #dce9f2;
+      background: rgba(12, 18, 24, .78);
+      text-decoration: none;
+    }
+    section { margin: 20px 0; padding: 25px; border: 1px solid var(--border); border-radius: 15px; background: var(--panel); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .card { padding: 19px; border: 1px solid #314454; border-radius: 11px; background: #101820; }
+    .status { display: inline-block; margin-bottom: 9px; padding: 4px 9px; border-radius: 999px; font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .available { color: #062416; background: var(--green); }
+    .active { color: #2d2000; background: var(--amber); }
+    .pending { color: #082033; background: var(--blue); }
+    .card p, .note { color: var(--muted); }
+    .checks { margin: 0; padding-left: 1.2rem; }
+    .checks li::marker { color: var(--green); }
+    .mermaid {
+      overflow-x: auto;
+      margin: 18px 0 0;
+      padding: 18px;
+      border-radius: 10px;
+      color: #dfeaf2;
+      background: #0b1117;
+      text-align: center;
+      white-space: pre;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid #2b3b49; text-align: left; vertical-align: top; }
+    th { color: #dcebf5; }
+    td { color: var(--muted); }
+    details { border-top: 1px solid #2c3d4b; padding-top: 13px; }
+    summary { cursor: pointer; color: #dcebf5; font-weight: 700; }
+    footer { padding: 20px 0 46px; color: #7f909d; font-size: .9rem; }
+    @media (max-width: 650px) {
+      header { padding-top: 36px; }
+      section { padding: 19px; }
+      th:nth-child(2), td:nth-child(2) { display: none; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Development report · 22 July 2026</div>
+  <h1>WebXR Ports</h1>
+  <p class="lead">A shared effort to keep classic engines useful in ordinary desktop mode while adding native VR,
+    WASM/WebGPU, and WebXR as optional presentation and input layers.</p>
+  <nav aria-label="Page and project links">
+    <a href="./">Browse files</a>
+    <a href="./QuakeQuest/">Launch QuakeQuest</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="https://github.com/kblood/quakequest-webxr/tree/webxr/ports-launcher">Quake source</a>
+    <a href="https://github.com/kblood/SurrealEngine/tree/integration/unified-engine">Surreal source</a>
+  </nav>
+</header>
+
+<main>
+  <section aria-labelledby="projects-title">
+    <h2 id="projects-title">Port status</h2>
+    <div class="grid">
+      <article class="card">
+        <span class="status available">Available</span>
+        <h3>QuakeQuest WebXR</h3>
+        <p>The browser launcher can start the bundled Quake shareware episode or use an owned local <code>id1</code>
+          folder. Flat WASM and immersive WebXR share the same port and game-data path.</p>
+        <ul class="checks">
+          <li>Canonical and legacy URLs validated</li>
+          <li>Launcher, service-worker scope, headers, and flat launch validated</li>
+          <li>Owned local data and bundled shareware kept separate</li>
+        </ul>
+      </article>
+      <article class="card">
+        <span class="status active">Integration in progress</span>
+        <h3>Surreal Engine</h3>
+        <p>One Unreal Engine 1 runtime is being assembled for Unreal Tournament, Unreal Gold, and Deus Ex, with
+          desktop controls remaining intact while native OpenXR and browser WebXR plug into shared XR interfaces.</p>
+        <ul class="checks">
+          <li>UT99 native VR release path and controller UI working</li>
+          <li>Flat WASM/WebGPU build and legal local-folder import working</li>
+          <li>OpenXR input, Deus Ex foundations, and bot telemetry isolated as PR-sized work</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section id="architecture" aria-labelledby="architecture-title">
+    <h2 id="architecture-title">Shared engine architecture</h2>
+    <p class="note">VR is an extension of the engine, not a replacement for its renderer, controls, or menus. The
+      browser build reuses the same game/runtime code; WebXR adds a provider only when an immersive session is active.</p>
+    <pre class="mermaid">
+flowchart TB
+  Data[User-selected local game folder] --> Launcher[Shared launcher and game registry]
+  Launcher --> Core[Surreal C++ core]
+  Core --> Native[Native desktop build]
+  Core --> Wasm[WASM build]
+  Native --> Desktop[Desktop renderer and controls]
+  Native --> OpenXR[Optional OpenXR provider]
+  Wasm --> WebGPU[WebGPU presentation]
+  WebGPU --> Flat[Flat browser mode]
+  WebGPU --> WebXR[Optional WebXR provider]
+  OpenXR --> Shared[Shared XR views, spaces, actions, and UI surfaces]
+  WebXR --> Shared
+    </pre>
+  </section>
+
+  <section aria-labelledby="workstreams-title">
+    <h2 id="workstreams-title">How the work fits together</h2>
+    <pre class="mermaid">
+flowchart LR
+  Frame[Frame pipeline] --> Views[View-family model]
+  Views --> Present[Presentation layers]
+  Present --> Bind[Target binding]
+  Bind --> OXR[OpenXR]
+  Bind --> WXR[WebXR]
+
+  Input[Input composition] --> OInput[OpenXR controllers]
+  Input --> WInput[WebXR controllers]
+
+  Web[Web platform] --> Data[Persistent local data]
+  Data --> Launch[Desktop launcher]
+  Launch --> WXR
+
+  Runtime[Deterministic runtime] --> Headless[Headless driver]
+  Headless --> Bots[Bot driver and telemetry]
+
+  Props[Property serialization and game registry] --> DX[Deus Ex support]
+    </pre>
+  </section>
+
+  <section id="roadmap" aria-labelledby="roadmap-title">
+    <h2 id="roadmap-title">Roadmap and release gates</h2>
+    <div class="grid">
+      <article class="card">
+        <span class="status available">Integrated foundation</span>
+        <h3>Shared baseline</h3>
+        <p>Twenty-one focused topic branches have been preserved for review, while the unified integration branch
+          proves that native VR, browser work, game support, and bot infrastructure can coexist.</p>
+      </article>
+      <article class="card">
+        <span class="status active">Next branches</span>
+        <h3>Close the common interfaces</h3>
+        <p><code>webxr-input-adapter</code>, <code>xr-common-spaces</code>, <code>xr-ui-surfaces</code>,
+          <code>deus-ex-save-package</code>, and <code>bot-controlled-fixtures</code>.</p>
+      </article>
+      <article class="card">
+        <span class="status pending">Before public Surreal build</span>
+        <h3>Hardware and release validation</h3>
+        <p>Real Quest WebGPU/WebXR presentation, tracked-controller input, menu and intro surfaces, full native and web
+          regressions, data-free packaging, and deployment under <code>Ports/SurrealEngine/</code>.</p>
+      </article>
+    </div>
+    <pre class="mermaid">
+flowchart LR
+  A[Shared foundations] --> B[Common XR spaces and input]
+  B --> C[WebXR headset and controller testing]
+  C --> D[Menus, intro, and in-world UI]
+  D --> E[Native plus web regression matrix]
+  E --> F[Data-free Surreal release]
+    </pre>
+  </section>
+
+  <section aria-labelledby="evidence-title">
+    <h2 id="evidence-title">Build and test evidence</h2>
+    <table>
+      <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Native OpenXR on/off builds and 14/14 core tests pass.</td></tr>
+        <tr><td>Web desktop launcher</td><td><code>pr/web-desktop-launcher</code></td><td>UT99 and Unreal Gold detection, local-folder import, and six launcher tests pass.</td></tr>
+        <tr><td>WebXR provider</td><td><code>pr/webxr-provider</code></td><td>Provider lifecycle and flat/WebXR import gate pass; physical Quest presentation remains a release gate.</td></tr>
+        <tr><td>OpenXR controls</td><td><code>pr/openxr-input-adapter</code></td><td>Tracked controllers, ray/UI targeting, and desktop mouse fallback are integrated.</td></tr>
+        <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
+        <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="data-title">
+    <h2 id="data-title">Game data and desktop packaging</h2>
+    <div class="grid">
+      <article class="card">
+        <h3>Legal data boundary</h3>
+        <p>Quake can offer its explicitly redistributable shareware data. Unreal Engine 1 game files are not hosted;
+          the launcher asks the player to select an installation they own and stores imported data locally.</p>
+      </article>
+      <article class="card">
+        <h3>One web build, several shells</h3>
+        <p>The hosted installable web app comes first. Electron or WebView2 can later wrap the same flat WASM launcher,
+          but native OpenXR remains the dependable PC-VR path instead of assuming desktop wrappers expose WebXR.</p>
+      </article>
+    </div>
+    <details>
+      <summary>More design documentation</summary>
+      <p><a href="https://github.com/kblood/SurrealEngine/blob/integration/unified-engine/Docs/UnifiedEngine.md">Unified engine plan</a>
+        · <a href="https://github.com/kblood/SurrealEngine/blob/integration/unified-engine/Docs/GameDataDistributionAndDesktopWeb.md">Game-data and desktop-web policy</a></p>
+    </details>
+  </section>
+</main>
+
+<footer>
+  This is a development snapshot, not a promise of release dates. WebXR requires a compatible browser, headset, and HTTPS.
+</footer>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+</script>
+</body>
+</html>
