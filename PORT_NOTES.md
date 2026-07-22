@@ -415,6 +415,27 @@ are inert (save/load round-trip moved to typed console commands);
 m3-integration 2d drives quicksave/quickload via keyboard F6/F9 instead
 of X/Y.
 
+## Launcher profiles and WebXR Ports layout (2026-07-22)
+
+The page now presents two independent choices before engine startup: bundled
+shareware vs an owned local Quake folder, then flatscreen/WASM vs WebXR. The
+folder picker accepts only `.pak`/`.pk3` files below an `id1` path; the existing
+individual-file picker remains as a compatibility fallback. Imported bytes are
+written only to `/quake_user/id1` in IDBFS and never enter an HTTP request.
+
+An explicit shareware launch passes the page-only `--web-shareware` marker.
+`main_web.c` consumes that marker and selects `/quake_shareware_user`; the
+marker never reaches DarkPlaces. This separate IDBFS mount makes the shareware
+choice reliable even if `/quake_user/id1` retains full-game files. It neither
+copies nor moves those files. Existing URLs/tests without the marker keep the
+local/import profile, while the launcher defaults to shareware unless persisted
+local packs are present.
+
+The canonical deployment is planned for `/webxr/Ports/QuakeQuest/`, with
+`/webxr/Ports/SurrealEngine/` reserved for the later engine port. The current
+`/webxr/quakequest/` path must remain an internal alias because installed PWAs
+and the signed Quest TWA retain that scope. See `DEPLOYMENT.md`.
+
 ## PWA — installable + offline (2026-07-12)
 
 **Layout change:** `web/` is now pure build output. The authored page shell
@@ -425,13 +446,14 @@ src/web-page/
 ├── index.html            source of truth (was web/index.html, hand-edited, not in git)
 ├── manifest.webmanifest
 ├── sw.js                 has __BUILD_VERSION__ placeholder, stamped by build.sh
+├── .htaccess             COOP/COEP, no-cache shell/SW, WASM/data/manifest MIME
 ├── icons/                icon-192.png, icon-512.png, icon-512-maskable.png (committed PNGs)
 └── tools/
     ├── icon.svg, icon-maskable.svg   hand-authored source of truth for the icons
     └── gen-icons.mjs                 rasterizes the SVGs (puppeteer-core) — run manually, not at build time
 ```
 
-`build.sh`'s last step copies `web-page/{index.html,manifest.webmanifest,sw.js,icons/}`
+`build.sh`'s last step copies `web-page/{index.html,manifest.webmanifest,sw.js,.htaccess,icons/}`
 into `$WEBOUT` and stamps `sw.js`'s `BUILD_VERSION` with
 `sha256(quake.wasm + quake.data + index.html) | cut -c1-12` — the cache name
 changes automatically whenever anything SW-relevant changes; never bump it
@@ -450,7 +472,11 @@ full-game pak files** — those are written by the page straight into IndexedDB
 (IDBFS), never over HTTP, so this service worker never sees them and can't
 accidentally cache/leak them. `install` uses `cache: 'reload'` requests
 (bypasses HTTP cache) + `skipWaiting()`; `activate` deletes any
-`quakequest-*` cache that isn't the current version + `clients.claim()`.
+cache for the current service-worker scope that isn't the current version +
+`clients.claim()`. Cache names include the encoded registration path because
+Cache Storage is origin-wide: the legacy `/webxr/quakequest/` scope and the
+canonical `/webxr/Ports/QuakeQuest/` scope must not delete or reuse each
+other's shell while both URLs remain supported.
 Navigation requests are served the cached shell regardless of path/query
 (SPA), re-wrapped to force `Cross-Origin-Opener-Policy: same-origin` +
 `Cross-Origin-Embedder-Policy: require-corp` so an **offline reload still

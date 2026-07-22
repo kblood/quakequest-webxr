@@ -10,6 +10,12 @@ browser-locally (IndexedDB) and never uploaded anywhere.
 browser, or click *Enter VR* in a headset browser (developed and QA'd on
 Meta Quest 3). Installable as a PWA with full offline support.
 
+The planned canonical ports layout is
+`https://dionysus.dk/webxr/Ports/QuakeQuest/`, with the current URL retained as
+an internal compatibility alias for existing service-worker and Quest TWA
+installations. See [DEPLOYMENT.md](DEPLOYMENT.md); the migration is not deployed
+by this source commit.
+
 ## Features
 
 - Full 6DoF VR: head tracking, decoupled weapon aim with laser sight,
@@ -19,8 +25,8 @@ Meta Quest 3). Installable as a PWA with full offline support.
 - Projection-derived per-eye HUD/text parallax (`vr_hud_depth` cvar) so 2D
   overlays fuse correctly at any eye-buffer resolution
 - Persistent saves/config via IndexedDB (`-userdir /quake_user`)
-- Bring-your-own full game: pak file picker → browser storage, engine
-  search-path rescan at runtime
+- Launcher choice between bundled legal shareware and a browser-local import
+  from an owned Quake/id1 folder, followed by flatscreen/WASM or WebXR mode
 - PWA: installable, offline-capable, versioned service-worker cache with
   automatic single-reload updates
 - ~25x faster than a naive port: real VBO path (`gl_webgl_forcevbo`) instead
