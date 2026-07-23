@@ -125,6 +125,7 @@
           <li>Browser OpenAL/Web Audio playback, explicit audio unlock, mute, volume, and lifecycle handling integrated</li>
           <li>Flat mode is automated-tested; physical Quest/WebXR behavior remains an experimental hardware gate</li>
         </ul>
+        <p><a href="SurrealEngine/">Conservative preview</a> · <a href="SurrealEngine-Experimental/">256 MiB WebXR qualification candidate</a></p>
       </article>
     </div>
   </section>
@@ -220,6 +221,7 @@ flowchart LR
         <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, independent Vulkan targets, and ordered OpenXR quad swapchain submission are integrated. Native AVI/loading presentation and headset validation remain.</td></tr>
         <tr><td>Browser audio</td><td><code>integration/unified-engine</code></td><td>OpenAL/Web Audio SFX and streamed-music queues, explicit unlock, visibility/XR lifecycle, mute, and volume pass generated-PCM Chrome tests. Emscripten's unbounded reported source count is clamped to the requested 256 voices; owned-game listening remains unverified.</td></tr>
         <tr><td>Low-memory browser data</td><td><code>integration/unified-engine</code></td><td>A default-off Window-owned Asyncify/WasmFS build mounts all 496 files directly from OPFS at a fixed 256 MiB heap. Persistent offscreen flat rendering advances ticks 1→56→113 with 41 draws, 52 textures, 99.83% nonuniform output, and zero GPU/page errors. Two-phase WebXR presentation remains in progress.</td></tr>
+        <tr><td>WebXR qualification candidate</td><td><code>release/webxr-asyncify-candidate-5170082f</code></td><td>The separate <a href="SurrealEngine-Experimental/">experimental site</a> passes exact public-origin packaging, retained-profile flat UT99, no-Wasm-reentry, main-loop/SDL callback gating, persistent direct-target, and 60/60 WebGPU-atlas-to-WebGL bridge probes. Physical Quest direct/bridge presentation, controls, audio, and comfort remain.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
         <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-04687fe1</code></td><td>The live preview passes HTTPS isolation, WASM MIME, exact source archive/hash, no-data gate, compact non-overlaying legal footer, flat input, fullscreen, synthetic Unreal Gold launch, and retained-profile UT99 WebGPU boot. Physical Quest/WebXR remains unverified.</td></tr>
