@@ -180,7 +180,7 @@ flowchart LR
       <article class="card">
         <span class="status available">Integrated foundation</span>
         <h3>Shared baseline</h3>
-        <p>The unified integration passes all 28 registered native tests plus the browser launcher, import,
+        <p>The unified integration passes all 30 registered native tests plus the browser launcher, import,
           persistence, direct-WebXR, WebGL-bridge, packaging, and corresponding-source suites.</p>
       </article>
       <article class="card">
@@ -215,12 +215,12 @@ flowchart LR
     <table>
       <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
       <tbody>
-        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 28 registered native tests pass.</td></tr>
+        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Ordinary and OpenXR-enabled Windows Release builds and all 30 registered native tests pass; a clean Window-owned Asyncify/WebXR build links from the same source.</td></tr>
         <tr><td>Web desktop launcher</td><td><code>release/browser-candidate-04687fe1</code></td><td>27 importer and 14 launcher checks pass. The exact GOG UT99 layout validates as 496 files / 659,817,346 bytes; the retained profile boots with ticks 2→59→116, 41 WebGPU draws, 52 textures, and zero engine/page errors.</td></tr>
-        <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, input, UI, and re-entry tests pass; physical Quest remains unverified.</td></tr>
+        <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, UI, and re-entry tests pass. Shared semantic Fire/AltFire/movement input and the first controller-aimed per-eye weapon path now build for WebXR and OpenXR; loaded UT99 and physical Quest qualification remain.</td></tr>
         <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, independent Vulkan targets, and ordered OpenXR quad swapchain submission are integrated. Native AVI/loading presentation and headset validation remain.</td></tr>
         <tr><td>Browser audio</td><td><code>integration/unified-engine</code></td><td>OpenAL/Web Audio SFX and streamed-music queues, explicit unlock, visibility/XR lifecycle, mute, and volume pass generated-PCM Chrome tests. Emscripten's unbounded reported source count is clamped to the requested 256 voices; owned-game listening remains unverified.</td></tr>
-        <tr><td>Low-memory browser data</td><td><code>integration/unified-engine</code></td><td>A default-off Window-owned Asyncify/WasmFS build mounts all 496 files directly from OPFS at a fixed 256 MiB heap. Persistent offscreen flat rendering advances ticks 1→56→113 with 41 draws, 52 textures, 99.83% nonuniform output, and zero GPU/page errors. Two-phase WebXR presentation remains in progress.</td></tr>
+        <tr><td>Low-memory browser data</td><td><code>integration/unified-engine</code></td><td>A default-off Window-owned Asyncify/WasmFS build mounts all 496 files directly from OPFS at a fixed 256 MiB heap. Persistent offscreen flat rendering advances ticks 1→56→113 with 41 draws, 52 textures, 99.83% nonuniform output, and zero GPU/page errors. Two-phase direct/bridge WebXR presentation and no-reentry gates are complete in software; physical Quest remains.</td></tr>
         <tr><td>WebXR qualification candidate</td><td><code>release/webxr-asyncify-candidate-5170082f</code></td><td>The separate <a href="SurrealEngine-Experimental/">experimental site</a> passes exact public-origin packaging, retained-profile flat UT99, no-Wasm-reentry, main-loop/SDL callback gating, persistent direct-target, and 60/60 WebGPU-atlas-to-WebGL bridge probes. Physical Quest direct/bridge presentation, controls, audio, and comfort remain.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
