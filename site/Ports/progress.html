@@ -183,12 +183,13 @@ flowchart LR
           persistence, direct-WebXR, WebGL-bridge, packaging, and corresponding-source suites.</p>
       </article>
       <article class="card">
-        <span class="status active">Next gate</span>
+        <span class="status available">Owned flat boot validated</span>
         <h3>Quest and owned-data validation</h3>
         <p>A real 496-file GOG UT99 folder validates, persists, materializes, and reaches the launcher. The generic
           post-Play import error was traced to Emscripten mutating a deliberately frozen argument array, not to the
           selected folder. Mutable native arguments, bounded browser audio voices, trusted-input pointer lock, exact
-          canvas binding, and separate folder-scan diagnostics are integrated for the next candidate. Physical Quest
+          canvas binding, and separate folder-scan diagnostics are integrated. A second optional-ABI probe that left
+          Emscripten's runtime aborted was also corrected. The retained GOG profile now boots and renders. Physical Quest
           stereo/FOV, timing, controls, menus, intro travel, exit/re-entry, and audio remain hardware gates.</p>
       </article>
       <article class="card">
@@ -214,13 +215,13 @@ flowchart LR
       <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
       <tbody>
         <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Complete Windows Release build and all 28 registered native tests pass.</td></tr>
-        <tr><td>Web desktop launcher</td><td><code>integration/unified-engine</code></td><td>The exact GOG UT99 layout validates as 496 files / 659,817,346 bytes. The misleading post-Play import error is fixed at its frozen-argv boundary, and folder scanning now reports permission, read, and quota failures separately.</td></tr>
+        <tr><td>Web desktop launcher</td><td><code>release/browser-candidate-04687fe1</code></td><td>27 importer and 14 launcher checks pass. The exact GOG UT99 layout validates as 496 files / 659,817,346 bytes; the retained profile boots with ticks 2→59→116, 41 WebGPU draws, 52 textures, and zero engine/page errors.</td></tr>
         <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, input, UI, and re-entry tests pass; physical Quest remains unverified.</td></tr>
         <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, independent Vulkan targets, and ordered OpenXR quad swapchain submission are integrated. Native AVI/loading presentation and headset validation remain.</td></tr>
         <tr><td>Browser audio</td><td><code>integration/unified-engine</code></td><td>OpenAL/Web Audio SFX and streamed-music queues, explicit unlock, visibility/XR lifecycle, mute, and volume pass generated-PCM Chrome tests. Emscripten's unbounded reported source count is clamped to the requested 256 voices; owned-game listening remains unverified.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
-        <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-f4bbecad</code></td><td>The live preview still passes HTTPS isolation, WASM MIME, source archive, no-data gate, compact non-overlaying legal footer, flat input, fullscreen, and synthetic launch. It predates the owned-data startup fixes; a replacement is being built and must pass a retained-profile UT99 run before deployment.</td></tr>
+        <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-04687fe1</code></td><td>The live preview passes HTTPS isolation, WASM MIME, exact source archive/hash, no-data gate, compact non-overlaying legal footer, flat input, fullscreen, synthetic Unreal Gold launch, and retained-profile UT99 WebGPU boot. Physical Quest/WebXR remains unverified.</td></tr>
       </tbody>
     </table>
   </section>
