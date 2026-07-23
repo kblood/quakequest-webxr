@@ -91,7 +91,7 @@
   <nav aria-label="Page and project links">
     <a href="./">Browse files</a>
     <a href="./QuakeQuest/">Launch QuakeQuest</a>
-    <a href="./SurrealEngine/">Launch SurrealEngine preview</a>
+    <a href="./SurrealEngine/">Launch SurrealEngine</a>
     <a href="#architecture">Architecture</a>
     <a href="#roadmap">Roadmap</a>
     <a href="https://github.com/kblood/quakequest-webxr/tree/webxr/ports-launcher">Quake source</a>
@@ -115,17 +115,18 @@
         </ul>
       </article>
       <article class="card">
-        <span class="status active">Experimental preview available</span>
+        <span class="status available">Current Web release available</span>
         <h3>Surreal Engine</h3>
-        <p>The data-free browser preview runs the shared Unreal Engine 1 runtime in flat WebGPU mode and can enter
+        <p>The data-free browser release runs the shared Unreal Engine 1 runtime in flat WebGPU mode and can enter
           WebXR through either direct WebGPU layers or a Quest-compatible WebGL presentation bridge.</p>
         <ul class="checks">
-          <li>Local-folder import for owned UT99 and Unreal Gold data; no game or demo data is hosted</li>
+          <li>Local-folder import for owned retail data and the supported UT99 348, Unreal 200, and Deus Ex 1002f demos</li>
+          <li>No retail or demo game data is hosted; users supply their own lawful local files</li>
           <li>Tracked controller proxies, exact menu laser/contact, intro/menu handoff, and mouse fallback integrated</li>
           <li>Browser OpenAL/Web Audio playback, explicit audio unlock, mute, volume, and lifecycle handling integrated</li>
-          <li>Flat mode is automated-tested; physical Quest/WebXR behavior remains an experimental hardware gate</li>
+          <li>Flat mode is automated-tested; physical Quest/WebXR behavior remains a hardware validation gate</li>
         </ul>
-        <p><a href="SurrealEngine/">Conservative preview</a> · <a href="SurrealEngine-Experimental/">256 MiB WebXR qualification candidate</a></p>
+        <p><a href="SurrealEngine/">Launch Surreal Engine</a></p>
       </article>
     </div>
   </section>
@@ -194,19 +195,20 @@ flowchart LR
           stereo/FOV, timing, controls, menus, intro travel, exit/re-entry, and audio remain hardware gates.</p>
       </article>
       <article class="card">
-        <span class="status pending">Before stable release</span>
-        <h3>Release validation</h3>
-        <p>Resolve headset findings, test real saves and title isolation, complete human hosting/license review, and
-          keep Unreal 205 unavailable unless its missing <code>UPak</code> dependency is supplied lawfully.</p>
+        <span class="status pending">Ongoing hardware validation</span>
+        <h3>Next release validation</h3>
+        <p>Continue physical Quest controller, HUD, weapon, save, and title-isolation checks, and keep every public
+          package data-free unless separate redistribution permission is established.</p>
       </article>
     </div>
     <pre class="mermaid">
 flowchart LR
   A[Shared foundations] --> B[Native and browser regression matrix]
-  B --> C[Data-free experimental preview]
+  B --> C[Data-free stable-folder release]
   C --> D[Physical Quest and owned-data testing]
   D --> E[Fix measured headset findings]
-  E --> F[Stable Surreal release]
+  E --> F[Next atomic stable-folder update]
+  F --> D
     </pre>
   </section>
 
@@ -215,16 +217,16 @@ flowchart LR
     <table>
       <thead><tr><th>Area</th><th>Reference</th><th>Current evidence</th></tr></thead>
       <tbody>
-        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine</code></td><td>Ordinary and OpenXR-enabled Windows Release builds and all 30 registered native tests pass; a clean Window-owned Asyncify/WebXR build links from the same source.</td></tr>
-        <tr><td>Web desktop launcher</td><td><code>release/browser-candidate-04687fe1</code></td><td>27 importer and 14 launcher checks pass. The exact GOG UT99 layout validates as 496 files / 659,817,346 bytes; the retained profile boots with ticks 2→59→116, 41 WebGPU draws, 52 textures, and zero engine/page errors.</td></tr>
+        <tr><td>Unified Surreal integration</td><td><code>integration/unified-engine @ e9031169</code></td><td>A clean Window-owned Asyncify/WebXR release build was produced from the unified source, and all 11 current browser packaging, import, audio, persistence, and WebXR suites pass.</td></tr>
+        <tr><td>Web desktop launcher</td><td><code>integration/unified-engine @ e9031169</code></td><td>The live importer recognizes owned retail installations plus UT99 demo 348, Unreal Special Edition demo 200, and Deus Ex demo 1002f. No game or demo payload is distributed by the site.</td></tr>
         <tr><td>WebXR provider</td><td><code>integration/unified-engine</code></td><td>Direct WebGPU and XRWebGLLayer bridge lifecycle, UI, and re-entry tests pass. Shared semantic Fire/AltFire/movement input and the first controller-aimed per-eye weapon path now build for WebXR and OpenXR; loaded UT99 and physical Quest qualification remain.</td></tr>
         <tr><td>OpenXR controls and UI</td><td><code>integration/unified-engine</code></td><td>Tracked controllers, shared ray/UI policy, mouse fallback, independent Vulkan targets, and ordered OpenXR quad swapchain submission are integrated. Native AVI/loading presentation and headset validation remain.</td></tr>
         <tr><td>Browser audio</td><td><code>integration/unified-engine</code></td><td>OpenAL/Web Audio SFX and streamed-music queues, explicit unlock, visibility/XR lifecycle, mute, and volume pass generated-PCM Chrome tests. Emscripten's unbounded reported source count is clamped to the requested 256 voices; owned-game listening remains unverified.</td></tr>
         <tr><td>Low-memory browser data</td><td><code>integration/unified-engine</code></td><td>A default-off Window-owned Asyncify/WasmFS build mounts all 496 files directly from OPFS at a fixed 256 MiB heap. Persistent offscreen flat rendering advances ticks 1→56→113 with 41 draws, 52 textures, 99.83% nonuniform output, and zero GPU/page errors. Two-phase direct/bridge WebXR presentation and no-reentry gates are complete in software; physical Quest remains.</td></tr>
-        <tr><td>WebXR qualification candidate</td><td><code>release/webxr-asyncify-candidate-5170082f</code></td><td>The separate <a href="SurrealEngine-Experimental/">experimental site</a> passes exact public-origin packaging, retained-profile flat UT99, no-Wasm-reentry, main-loop/SDL callback gating, persistent direct-target, and 60/60 WebGPU-atlas-to-WebGL bridge probes. Physical Quest direct/bridge presentation, controls, audio, and comfort remain.</td></tr>
+        <tr><td>Stable Web package</td><td><code>integration/unified-engine @ e9031169</code></td><td>The one public <a href="SurrealEngine/">SurrealEngine folder</a> passes package, manifest, source-archive, live-header, responsive-layout, fullscreen, input, and synthetic Unreal Gold launch checks. Numbered and experimental public folders have been retired.</td></tr>
         <tr><td>Bot improvements</td><td><code>pr/bot-benchmark-telemetry</code></td><td>Deterministic/headless test path and benchmark telemetry are isolated from presentation code.</td></tr>
         <tr><td>QuakeQuest deployment</td><td><code>webxr/ports-launcher</code></td><td>Live paths, file hashes, caching, service-worker scopes, and flat launch validated.</td></tr>
-        <tr><td>Surreal preview deployment</td><td><code>release/browser-candidate-04687fe1</code></td><td>The live preview passes HTTPS isolation, WASM MIME, exact source archive/hash, no-data gate, compact non-overlaying legal footer, flat input, fullscreen, synthetic Unreal Gold launch, and retained-profile UT99 WebGPU boot. Physical Quest/WebXR remains unverified.</td></tr>
+        <tr><td>Surreal deployment</td><td><code>integration/unified-engine @ e9031169</code></td><td>The 24 July 2026 deployment passes HTTPS isolation, WASM MIME, exact manifest and corresponding-source hashes, no-data policy, responsive layout, flat input, fullscreen, and synthetic Unreal Gold launch. Physical Quest/WebXR remains a manual validation gate.</td></tr>
       </tbody>
     </table>
   </section>

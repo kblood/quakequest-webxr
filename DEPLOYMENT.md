@@ -18,15 +18,21 @@ shareware data after deployment. Both reported independent scope-qualified
 service-worker caches, `crossOriginIsolated === true`, two game-data choices,
 two display choices, and no browser page errors.
 
-The data-free Surreal Engine experimental preview was deployed later the same
-day at `https://dionysus.dk/webxr/Ports/SurrealEngine/`. Its release source is
-`kblood/SurrealEngine` branch `release/browser-candidate-2809da06`, commit
-`20d02a771088d69ae9ba65e8fdd69231960f6d0a`. The live-origin browser smoke
-verified cross-origin isolation, WASM MIME, the local-folder import gate,
-ordinary keyboard/mouse and fullscreen behavior, synthetic flat launch, and
-the matching corresponding-source archive. No UE1 game or demo data is hosted.
-Physical Quest behavior remains explicitly labeled as an experimental,
-hardware-unverified preview.
+The data-free Surreal Engine release is at
+`https://dionysus.dk/webxr/Ports/SurrealEngine/`. It was updated on 2026-07-24
+from clean `kblood/SurrealEngine` integration commit `e9031169`. The live-origin
+browser smoke verified cross-origin isolation, WASM MIME, the local-folder
+import gate, ordinary keyboard/mouse and fullscreen behavior, synthetic flat
+launch, and the matching corresponding-source archive. Local UT99 348, Unreal
+Special Edition 200, and Deus Ex 1002f demo folders are recognized, but no UE1
+game or demo data is hosted. Physical Quest/WebXR behavior remains a separate
+hardware gate.
+
+Surreal Engine uses one public release directory. Old numbered candidate and
+experimental directories were moved intact to the non-public server archive
+`/var/www/html/webxr/.SurrealEngine-public-archive-pre-single-20260724`; the
+previous stable release is at
+`/var/www/html/webxr/.SurrealEngine.rollback-04687fe1-20260724`.
 
 ## Verified pre-migration release
 
@@ -61,6 +67,10 @@ Use this physical and URL layout:
 ├── QuakeQuest/       -> https://dionysus.dk/webxr/Ports/QuakeQuest/
 └── SurrealEngine/    -> https://dionysus.dk/webxr/Ports/SurrealEngine/
 ```
+
+Do not add numbered Surreal release directories beneath `Ports`. Update the
+single `SurrealEngine` directory by staging, hash verification, and atomic
+rename; keep rollback copies outside the public catalog.
 
 QuakeQuest uses only relative application URLs: `quake.js`, `quake.wasm`,
 `quake.data`, the manifest, icons, service-worker registration, and precache

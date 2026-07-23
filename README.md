@@ -10,11 +10,12 @@ browser-locally (IndexedDB) and never uploaded anywhere.
 browser, or click *Enter VR* in a headset browser (developed and QA'd on
 Meta Quest 3). Installable as a PWA with full offline support.
 
-The planned canonical ports layout is
+The canonical ports layout is
 `https://dionysus.dk/webxr/Ports/QuakeQuest/`, with the legacy URL retained as
 an internal compatibility alias for existing service-worker and Quest TWA
-installations. See [DEPLOYMENT.md](DEPLOYMENT.md); the migration is not deployed
-by this source commit.
+installations. The same catalog contains the single Surreal Engine release at
+`https://dionysus.dk/webxr/Ports/SurrealEngine/`. See
+[DEPLOYMENT.md](DEPLOYMENT.md) for the deployed layout and rollback policy.
 
 ## Features
 
